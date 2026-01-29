@@ -1398,7 +1398,12 @@ export function onModifierHold(modifiers, callback, options = {}) {
   /** @param {Event} e */
   function handleKeyDown(e) {
     const event = /** @type {KeyboardEvent} */ (e)
-    if (!modSet.has(event.key.toLowerCase())) return
+    if (!modSet.has(event.key.toLowerCase())) {
+      // Non-modifier key pressed — a shortcut was used, not a bare hold
+      if (timer !== null) { clearTimeout(timer); timer = null }
+      if (isHeld) { isHeld = false; callback(false) }
+      return
+    }
     if (timer !== null) return // already waiting
 
     timer = setTimeout(() => {
