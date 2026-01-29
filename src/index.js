@@ -348,6 +348,10 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   function handleKeyDown(e) {
     const event = /** @type {KeyboardEvent} */ (e)
     const tgt = /** @type {Element | null} */ (event.target)
+
+    // Don't fire keybinds while the command palette is open
+    if (tgt?.matches?.('command-palette[open]')) return
+
     // Don't capture when typing in inputs (unless command explicitly allows it)
     const inInput = tgt?.tagName === 'INPUT' ||
                     tgt?.tagName === 'TEXTAREA' ||
@@ -374,6 +378,10 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   /** @param {Event} e */
   function handleMouseDown(e) {
     const event = /** @type {MouseEvent} */ (e)
+
+    // Don't fire keybinds while the command palette is open
+    const tgt = /** @type {Element | null} */ (event.target)
+    if (tgt?.matches?.('command-palette[open]')) return
 
     // O(1) lookup
     const candidates = lookup.mouse.get(eventToMouseLookup(event))

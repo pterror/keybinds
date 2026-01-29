@@ -569,6 +569,28 @@ describe('keybinds', () => {
     cleanup()
   })
 
+  test('does not dispatch when event target is an open command-palette', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const commands = [
+      { id: 'save', label: 'Save', keys: ['ctrl+s'], execute: fn },
+    ]
+    const cleanup = keybinds(commands, undefined, { target })
+
+    const palette = document.createElement('command-palette')
+    palette.setAttribute('open', '')
+    target.appendChild(palette)
+
+    const event = new KeyboardEvent('keydown', {
+      key: 's', code: 'KeyS', ctrlKey: true,
+    })
+    Object.defineProperty(event, 'target', { value: palette })
+    target.dispatchEvent(event)
+
+    expect(fn).not.toHaveBeenCalled()
+    cleanup()
+  })
+
   test('passes context to execute and when', () => {
     const fn = mock(() => {})
     const target = document.createElement('div')
