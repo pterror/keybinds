@@ -1,16 +1,17 @@
 # Components
 
-keybinds provides two web components for discoverability:
+keybinds provides three web components for discoverability and customization:
 
 - **`<command-palette>`** - Search-driven command execution (like VS Code's Ctrl+Shift+P)
 - **`<keybind-cheatsheet>`** - Glanceable reference (like ChatGPT's hold-Ctrl overlay)
+- **`<keybind-settings>`** - Rebindable keyboard shortcuts panel
 
 ## Setup
 
 ```js
 import { registerComponents } from 'keybinds'
 
-registerComponents()  // Defines both custom elements
+registerComponents()  // Defines all custom elements
 ```
 
 Then use in HTML:
@@ -18,6 +19,7 @@ Then use in HTML:
 ```html
 <command-palette></command-palette>
 <keybind-cheatsheet></keybind-cheatsheet>
+<keybind-settings></keybind-settings>
 ```
 
 ## Command Palette
@@ -105,6 +107,69 @@ cheatsheet.context = getContext()
 // Manual trigger
 helpButton.onclick = () => cheatsheet.open = true
 ```
+
+## Keybind Settings
+
+Rebindable keyboard shortcuts panel with conflict detection.
+
+```html
+<keybind-settings></keybind-settings>
+```
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `store` | `BindingsStore` | Reactive bindings store instance |
+| `open` | `boolean` | Show/hide the settings panel |
+
+### Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `open` | When present, settings panel is visible |
+
+### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `close` | - | Fired when settings panel is dismissed |
+| `change` | `{ commandId, keys?, mouse? }` | Fired when a binding is changed |
+| `reset` | `{ commandId? }` | Fired when bindings are reset |
+
+### Usage
+
+```js
+import { BindingsStore, defineSchema, registerComponents } from 'keybinds'
+
+const schema = defineSchema({
+  save: { label: 'Save', category: 'File', keys: ['$mod+s'] },
+  open: { label: 'Open', category: 'File', keys: ['$mod+o'] },
+})
+
+const store = new BindingsStore(schema, 'myapp:keybinds')
+registerComponents()
+
+const settings = document.querySelector('keybind-settings')
+settings.store = store
+
+// Open settings
+settingsButton.onclick = () => settings.open = true
+
+// Listen for changes
+settings.addEventListener('change', (e) => {
+  console.log('Changed:', e.detail.commandId)
+})
+```
+
+### Behavior
+
+- Groups commands by category
+- Click a binding to re-record it
+- Click "+ Key" or "+ Mouse" to add a new binding
+- Conflicts are detected and shown inline with Replace/Cancel options
+- Per-command and global reset buttons
+- Escape cancels recording or closes the panel
 
 ## onModifierHold Utility
 

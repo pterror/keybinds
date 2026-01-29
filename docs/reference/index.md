@@ -172,6 +172,60 @@ store.save({ save: { keys: ['$mod+Shift+s'] } })
 
 ---
 
+## eventToBindingString(event)
+
+Convert a KeyboardEvent to a canonical binding string.
+
+```ts
+function eventToBindingString(event: KeyboardEvent): string | null
+```
+
+Returns `null` for bare modifier presses and unknown keys.
+
+```js
+// In a keydown handler:
+const binding = eventToBindingString(event)  // e.g. "$mod+shift+k"
+```
+
+---
+
+## eventToMouseBindingString(event)
+
+Convert a MouseEvent to a canonical binding string.
+
+```ts
+function eventToMouseBindingString(event: MouseEvent): string | null
+```
+
+```js
+// In a mousedown handler:
+const binding = eventToMouseBindingString(event)  // e.g. "$mod+click"
+```
+
+---
+
+## findConflict(schema, bindingStr, type, excludeId?)
+
+Check if a binding conflicts with any command in a schema.
+
+```ts
+function findConflict(
+  schema: Schema,
+  bindingStr: string,
+  type: 'keys' | 'mouse',
+  excludeId?: string
+): { commandId: string, label: string } | null
+```
+
+```js
+const conflict = findConflict(schema, '$mod+s', 'keys', 'save')
+if (conflict) {
+  console.log(`Conflicts with ${conflict.label}`)
+}
+```
+
+---
+
 ## Types
 
 ```ts

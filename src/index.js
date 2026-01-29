@@ -349,8 +349,9 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     const event = /** @type {KeyboardEvent} */ (e)
     const tgt = /** @type {Element | null} */ (event.target)
 
-    // Don't fire keybinds while the command palette is open
+    // Don't fire keybinds while the command palette or settings panel is open
     if (tgt?.matches?.('command-palette[open]')) return
+    if (tgt?.matches?.('keybind-settings[open]')) return
 
     // Don't capture when typing in inputs (unless command explicitly allows it)
     const inInput = tgt?.tagName === 'INPUT' ||
@@ -379,9 +380,10 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   function handleMouseDown(e) {
     const event = /** @type {MouseEvent} */ (e)
 
-    // Don't fire keybinds while the command palette is open
+    // Don't fire keybinds while the command palette or settings panel is open
     const tgt = /** @type {Element | null} */ (event.target)
     if (tgt?.matches?.('command-palette[open]')) return
+    if (tgt?.matches?.('keybind-settings[open]')) return
 
     // O(1) lookup
     const candidates = lookup.mouse.get(eventToMouseLookup(event))
@@ -836,6 +838,114 @@ export function fuzzyMatcher(query, text) {
   score += Math.round((positions.length / t.length) * 10)
 
   return { score, positions }
+}
+
+// ========================================
+// Event-to-binding converters
+// ========================================
+
+/**
+ * Convert a KeyboardEvent to a canonical binding string (e.g. "$mod+shift+k")
+ *
+ * Returns null for bare modifier presses (Shift/Ctrl/Alt/Meta alone)
+ * and for keys not in VALID_KEYS.
+ *
+ * @param {KeyboardEvent} event
+ * @returns {string | null}
+ */
+export function eventToBindingString(event) {
+  const key = event.key.toLowerCase()
+
+  // Ignore bare modifier presses
+  if (['shift', 'control', 'alt', 'meta'].includes(key)) return null
+
+  // Normalize key name — prefer event.key, fall back to event.code
+  let normalizedKey = key
+  const code = event.code.toLowerCase()
+  if (code.startsWith('key')) {
+    const codeKey = code.slice(3)
+    if (VALID_KEYS.has(codeKey) && !VALID_KEYS.has(key)) normalizedKey = codeKey
+  }
+
+  if (!VALID_KEYS.has(normalizedKey)) return null
+
+  // Build modifier prefix using $mod for the platform modifier
+  const parts = []
+  const hasPlatformMod = isMac ? event.metaKey : event.ctrlKey
+  const hasNonPlatformMod = isMac ? event.ctrlKey : event.metaKey
+
+  if (hasPlatformMod) parts.push('$mod')
+  if (hasNonPlatformMod) parts.push(isMac ? 'ctrl' : 'meta')
+  if (event.altKey) parts.push('alt')
+  if (event.shiftKey) parts.push('shift')
+  parts.push(normalizedKey)
+
+  return parts.join('+')
+}
+
+/**
+ * Convert a MouseEvent to a canonical binding string (e.g. "$mod+click")
+ *
+ * @param {MouseEvent} event
+ * @returns {string | null}
+ */
+export function eventToMouseBindingString(event) {
+  const buttonName = BUTTON_NAMES[event.button]
+  if (!buttonName) return null
+
+  const parts = []
+  const hasPlatformMod = isMac ? event.metaKey : event.ctrlKey
+  const hasNonPlatformMod = isMac ? event.ctrlKey : event.metaKey
+
+  if (hasPlatformMod) parts.push('$mod')
+  if (hasNonPlatformMod) parts.push(isMac ? 'ctrl' : 'meta')
+  if (event.altKey) parts.push('alt')
+  if (event.shiftKey) parts.push('shift')
+  parts.push(buttonName)
+
+  return parts.join('+')
+}
+
+/**
+ * Check if a binding string conflicts with any command in the schema
+ *
+ * @param {Schema} schema - The binding schema to check against
+ * @param {string} bindingStr - The binding string to check
+ * @param {'keys' | 'mouse'} type - Whether this is a key or mouse binding
+ * @param {string} [excludeId] - Command ID to exclude from conflict check
+ * @returns {{ commandId: string, label: string } | null}
+ */
+export function findConflict(schema, bindingStr, type, excludeId) {
+  // Normalize the candidate through parse → lookup
+  let candidateLookup
+  try {
+    if (type === 'keys') {
+      candidateLookup = keyToLookup(parseKey(bindingStr))
+    } else {
+      candidateLookup = mouseToLookup(parseMouse(bindingStr))
+    }
+  } catch {
+    return null
+  }
+
+  for (const [id, binding] of Object.entries(schema)) {
+    if (id === excludeId) continue
+    const bindings = binding[type]
+    if (!bindings) continue
+
+    for (const b of bindings) {
+      try {
+        const lookup = type === 'keys' ? keyToLookup(parseKey(b)) : mouseToLookup(parseMouse(b))
+        if (lookup === candidateLookup) {
+          return { commandId: id, label: binding.label }
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+
+  return null
 }
 
 // ========================================
@@ -1469,6 +1579,586 @@ export function onModifierHold(modifiers, callback, options = {}) {
 }
 
 /**
+ * <keybind-settings> - Keybinding settings panel
+ *
+ * Attributes:
+ *   open - Show/hide the settings panel
+ *
+ * Properties:
+ *   store: BindingsStore  - Reactive bindings store
+ *   open: boolean         - Show/hide the settings panel
+ *
+ * Events:
+ *   close  - Fired when settings panel is dismissed
+ *   change - Fired when a binding is changed (detail: { commandId, keys?, mouse? })
+ *   reset  - Fired when bindings are reset (detail: { commandId? })
+ *
+ * BEM classes:
+ *   .settings
+ *   .settings__backdrop
+ *   .settings__dialog
+ *   .settings__header
+ *   .settings__title
+ *   .settings__reset-all
+ *   .settings__group
+ *   .settings__group-title
+ *   .settings__list
+ *   .settings__item
+ *   .settings__item-label
+ *   .settings__item-bindings
+ *   .settings__item-reset
+ *   .settings__binding
+ *   .settings__binding-keys
+ *   .settings__binding-key
+ *   .settings__binding-remove
+ *   .settings__item-add
+ *   .settings__binding--recording
+ *   .settings__recording-overlay
+ *   .settings__conflict
+ */
+export class KeybindSettings extends HTMLElement {
+  static get observedAttributes() {
+    return ['open']
+  }
+
+  constructor() {
+    super()
+    /** @type {BindingsStore<any> | null} */
+    this._store = null
+    /** @type {((e: Event) => void) | null} */
+    this._storeListener = null
+    /** @type {{ commandId: string, type: 'keys' | 'mouse', index: number | null } | null} */
+    this._recording = null
+    /** @type {{ commandId: string, label: string, bindingStr: string, type: 'keys' | 'mouse', index: number | null } | null} */
+    this._conflict = null
+    /** @type {((e: Event) => void) | null} */
+    this._recordKeyHandler = null
+    /** @type {((e: Event) => void) | null} */
+    this._recordMouseHandler = null
+
+    const shadow = this.attachShadow({ mode: 'open' })
+    shadow.innerHTML = `
+      <style>
+        :host { display: none; }
+        :host([open]) { display: block; }
+        * { box-sizing: border-box; }
+        .settings__backdrop { position: fixed; inset: 0; }
+      </style>
+      <div class="settings" part="settings">
+        <div class="settings__backdrop" part="backdrop"></div>
+        <div class="settings__dialog" part="dialog" role="dialog" aria-modal="true" aria-label="Keybind Settings"></div>
+      </div>
+    `
+
+    /** @type {HTMLElement} */
+    this._backdrop = /** @type {HTMLElement} */ (shadow.querySelector('.settings__backdrop'))
+    /** @type {HTMLElement} */
+    this._dialog = /** @type {HTMLElement} */ (shadow.querySelector('.settings__dialog'))
+
+    this._backdrop.addEventListener('click', () => this._close())
+  }
+
+  get store() { return this._store }
+  set store(val) {
+    // Remove old listener
+    if (this._store && this._storeListener) {
+      this._store.removeEventListener('change', this._storeListener)
+    }
+    this._store = val || null
+    // Add new listener
+    if (this._store) {
+      this._storeListener = () => this._render()
+      this._store.addEventListener('change', this._storeListener)
+    }
+    if (this.open) this._render()
+  }
+
+  get open() { return this.hasAttribute('open') }
+  set open(val) {
+    if (val) this.setAttribute('open', '')
+    else this.removeAttribute('open')
+  }
+
+  /**
+   * @param {string} name
+   * @param {string | null} _oldVal
+   * @param {string | null} newVal
+   */
+  attributeChangedCallback(name, _oldVal, newVal) {
+    if (name === 'open') {
+      if (newVal !== null) {
+        this._recording = null
+        this._conflict = null
+        this._render()
+      } else {
+        this._stopRecording()
+      }
+    }
+  }
+
+  disconnectedCallback() {
+    this._stopRecording()
+    if (this._store && this._storeListener) {
+      this._store.removeEventListener('change', this._storeListener)
+    }
+  }
+
+  _close() {
+    this._stopRecording()
+    this.open = false
+    this.dispatchEvent(new CustomEvent('close'))
+  }
+
+  /**
+   * Get the effective bindings for a command (overrides merged with schema)
+   * @param {string} commandId
+   * @returns {{ keys: string[], mouse: string[] }}
+   */
+  _getBindings(commandId) {
+    if (!this._store) return { keys: [], mouse: [] }
+    const merged = this._store.get()
+    const binding = merged[commandId]
+    return {
+      keys: binding?.keys ? [...binding.keys] : [],
+      mouse: binding?.mouse ? [...binding.mouse] : [],
+    }
+  }
+
+  /**
+   * Save binding changes, cleaning up overrides that match defaults
+   * @param {string} commandId
+   * @param {{ keys: string[], mouse: string[] }} newBindings
+   */
+  _saveBindings(commandId, newBindings) {
+    if (!this._store) return
+    const schema = this._store.schema
+    const schemaDef = schema[commandId]
+    if (!schemaDef) return
+
+    const overrides = { ...this._store.getOverrides() }
+
+    // Check if new bindings match schema defaults
+    const keysMatch = arraysEqual(newBindings.keys, schemaDef.keys || [])
+    const mouseMatch = arraysEqual(newBindings.mouse, schemaDef.mouse || [])
+
+    if (keysMatch && mouseMatch) {
+      // Matches defaults — remove override entry
+      delete overrides[commandId]
+    } else {
+      overrides[commandId] = {}
+      if (!keysMatch) overrides[commandId].keys = newBindings.keys
+      if (!mouseMatch) overrides[commandId].mouse = newBindings.mouse
+    }
+
+    this._store.save(overrides)
+    this.dispatchEvent(new CustomEvent('change', {
+      detail: { commandId, keys: newBindings.keys, mouse: newBindings.mouse }
+    }))
+  }
+
+  /**
+   * @param {string} commandId
+   * @param {'keys' | 'mouse'} type
+   * @param {number | null} index - null for adding, number for replacing
+   */
+  _startRecording(commandId, type, index) {
+    this._stopRecording()
+    this._recording = { commandId, type, index }
+    this._conflict = null
+
+    /** @param {Event} e */
+    const keyHandler = (e) => {
+      const event = /** @type {KeyboardEvent} */ (e)
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        this._stopRecording()
+        this._render()
+        return
+      }
+
+      if (this._recording?.type !== 'keys') return
+
+      const bindingStr = eventToBindingString(event)
+      if (!bindingStr) return // bare modifier, ignore
+
+      event.preventDefault()
+      event.stopPropagation()
+      this._handleRecordedBinding(bindingStr)
+    }
+
+    /** @param {Event} e */
+    const mouseHandler = (e) => {
+      if (this._recording?.type !== 'mouse') return
+
+      const event = /** @type {MouseEvent} */ (e)
+      const bindingStr = eventToMouseBindingString(event)
+      if (!bindingStr) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      this._handleRecordedBinding(bindingStr)
+    }
+
+    this._recordKeyHandler = keyHandler
+    this._recordMouseHandler = mouseHandler
+
+    window.addEventListener('keydown', keyHandler, true)
+    window.addEventListener('mousedown', mouseHandler, true)
+
+    this._render()
+  }
+
+  _stopRecording() {
+    if (this._recordKeyHandler) {
+      window.removeEventListener('keydown', this._recordKeyHandler, true)
+      this._recordKeyHandler = null
+    }
+    if (this._recordMouseHandler) {
+      window.removeEventListener('mousedown', this._recordMouseHandler, true)
+      this._recordMouseHandler = null
+    }
+    this._recording = null
+    this._conflict = null
+  }
+
+  /** @param {string} bindingStr */
+  _handleRecordedBinding(bindingStr) {
+    if (!this._recording || !this._store) return
+    const { commandId, type, index } = this._recording
+
+    // Check for conflict
+    const conflict = findConflict(this._store.get(), bindingStr, type, commandId)
+    if (conflict) {
+      this._conflict = { ...conflict, bindingStr, type, index }
+      this._render()
+      return
+    }
+
+    this._applyBinding(commandId, type, index, bindingStr)
+  }
+
+  /**
+   * @param {string} commandId
+   * @param {'keys' | 'mouse'} type
+   * @param {number | null} index
+   * @param {string} bindingStr
+   */
+  _applyBinding(commandId, type, index, bindingStr) {
+    const bindings = this._getBindings(commandId)
+    if (index !== null) {
+      bindings[type][index] = bindingStr
+    } else {
+      bindings[type].push(bindingStr)
+    }
+    this._stopRecording()
+    this._saveBindings(commandId, bindings)
+  }
+
+  _acceptConflict() {
+    if (!this._conflict || !this._recording || !this._store) return
+    const { commandId: conflictCmdId, bindingStr, type } = this._conflict
+    const { commandId, index } = this._recording
+
+    // Remove conflicting binding from the other command
+    const conflictBindings = this._getBindings(conflictCmdId)
+    try {
+      const candidateLookup = type === 'keys' ? keyToLookup(parseKey(bindingStr)) : mouseToLookup(parseMouse(bindingStr))
+      conflictBindings[type] = conflictBindings[type].filter(b => {
+        try {
+          const lookup = type === 'keys' ? keyToLookup(parseKey(b)) : mouseToLookup(parseMouse(b))
+          return lookup !== candidateLookup
+        } catch { return true }
+      })
+    } catch {
+      // Shouldn't happen since we already validated
+    }
+    this._saveBindings(conflictCmdId, conflictBindings)
+
+    // Apply the new binding
+    this._applyBinding(commandId, type, index, bindingStr)
+  }
+
+  _cancelConflict() {
+    this._conflict = null
+    this._render()
+  }
+
+  /**
+   * @param {string} commandId
+   * @param {'keys' | 'mouse'} type
+   * @param {number} index
+   */
+  _removeBinding(commandId, type, index) {
+    const bindings = this._getBindings(commandId)
+    bindings[type].splice(index, 1)
+    this._saveBindings(commandId, bindings)
+  }
+
+  /** @param {string} commandId */
+  _resetCommand(commandId) {
+    if (!this._store) return
+    const overrides = { ...this._store.getOverrides() }
+    delete overrides[commandId]
+    this._store.save(overrides)
+    this.dispatchEvent(new CustomEvent('reset', { detail: { commandId } }))
+  }
+
+  _resetAll() {
+    if (!this._store) return
+    this._store.save({})
+    this.dispatchEvent(new CustomEvent('reset', { detail: {} }))
+  }
+
+  _render() {
+    if (!this._store) {
+      this._dialog.innerHTML = ''
+      return
+    }
+
+    const schema = this._store.schema
+    const merged = this._store.get()
+    this._dialog.innerHTML = ''
+
+    // Header
+    const header = document.createElement('div')
+    header.className = 'settings__header'
+    header.setAttribute('part', 'header')
+
+    const title = document.createElement('div')
+    title.className = 'settings__title'
+    title.setAttribute('part', 'title')
+    title.textContent = 'Keyboard Shortcuts'
+    header.appendChild(title)
+
+    const resetAll = document.createElement('button')
+    resetAll.className = 'settings__reset-all'
+    resetAll.setAttribute('part', 'reset-all')
+    resetAll.textContent = 'Reset All'
+    resetAll.addEventListener('click', () => this._resetAll())
+    header.appendChild(resetAll)
+
+    this._dialog.appendChild(header)
+
+    // Group by category
+    /** @type {Record<string, Array<{ id: string, label: string }>>} */
+    const groups = {}
+    for (const [id, val] of Object.entries(schema)) {
+      const binding = /** @type {BindingSchema} */ (val)
+      if (binding.hidden) continue
+      const cat = binding.category || 'Other'
+      if (!groups[cat]) groups[cat] = []
+      groups[cat].push({ id, label: binding.label })
+    }
+
+    for (const [category, cmds] of Object.entries(groups)) {
+      const group = document.createElement('div')
+      group.className = 'settings__group'
+      group.setAttribute('part', 'group')
+
+      const groupTitle = document.createElement('div')
+      groupTitle.className = 'settings__group-title'
+      groupTitle.setAttribute('part', 'group-title')
+      groupTitle.textContent = category
+      group.appendChild(groupTitle)
+
+      const list = document.createElement('ul')
+      list.className = 'settings__list'
+      list.setAttribute('part', 'list')
+
+      for (const cmd of cmds) {
+        const bindings = merged[cmd.id]
+        const li = document.createElement('li')
+        li.className = 'settings__item'
+        li.setAttribute('part', 'item')
+
+        // Label
+        const label = document.createElement('span')
+        label.className = 'settings__item-label'
+        label.setAttribute('part', 'item-label')
+        label.textContent = cmd.label
+        li.appendChild(label)
+
+        // Bindings container
+        const bindingsEl = document.createElement('span')
+        bindingsEl.className = 'settings__item-bindings'
+        bindingsEl.setAttribute('part', 'item-bindings')
+
+        // Render key bindings
+        if (bindings?.keys) {
+          for (let i = 0; i < bindings.keys.length; i++) {
+            const key = /** @type {string} */ (bindings.keys[i])
+            bindingsEl.appendChild(this._renderBinding(cmd.id, 'keys', i, key))
+          }
+        }
+
+        // Render mouse bindings
+        if (bindings?.mouse) {
+          for (let i = 0; i < bindings.mouse.length; i++) {
+            const mouse = /** @type {string} */ (bindings.mouse[i])
+            bindingsEl.appendChild(this._renderBinding(cmd.id, 'mouse', i, mouse))
+          }
+        }
+
+        // Check if recording for this command (add mode)
+        const isRecordingAdd = this._recording &&
+          this._recording.commandId === cmd.id &&
+          this._recording.index === null
+
+        if (isRecordingAdd) {
+          const overlay = document.createElement('span')
+          overlay.className = 'settings__binding settings__binding--recording'
+          overlay.setAttribute('part', 'binding binding-recording')
+          const recordingText = document.createElement('span')
+          recordingText.className = 'settings__recording-overlay'
+          recordingText.setAttribute('part', 'recording-overlay')
+          recordingText.textContent = this._recording?.type === 'keys' ? 'Press a key...' : 'Click...'
+          overlay.appendChild(recordingText)
+          bindingsEl.appendChild(overlay)
+
+          // Show conflict if any
+          if (this._conflict) {
+            bindingsEl.appendChild(this._renderConflict())
+          }
+        }
+
+        // Add button (dropdown for key/mouse)
+        if (!this._recording) {
+          const addBtn = document.createElement('span')
+          addBtn.className = 'settings__item-add'
+          addBtn.setAttribute('part', 'item-add')
+
+          const addKeyBtn = document.createElement('button')
+          addKeyBtn.setAttribute('part', 'add-key')
+          addKeyBtn.textContent = '+ Key'
+          addKeyBtn.addEventListener('click', () => this._startRecording(cmd.id, 'keys', null))
+          addBtn.appendChild(addKeyBtn)
+
+          const addMouseBtn = document.createElement('button')
+          addMouseBtn.setAttribute('part', 'add-mouse')
+          addMouseBtn.textContent = '+ Mouse'
+          addMouseBtn.addEventListener('click', () => this._startRecording(cmd.id, 'mouse', null))
+          addBtn.appendChild(addMouseBtn)
+
+          bindingsEl.appendChild(addBtn)
+        }
+
+        li.appendChild(bindingsEl)
+
+        // Reset button
+        const resetBtn = document.createElement('button')
+        resetBtn.className = 'settings__item-reset'
+        resetBtn.setAttribute('part', 'item-reset')
+        resetBtn.textContent = 'Reset'
+        resetBtn.addEventListener('click', () => this._resetCommand(cmd.id))
+        li.appendChild(resetBtn)
+
+        list.appendChild(li)
+      }
+
+      group.appendChild(list)
+      this._dialog.appendChild(group)
+    }
+  }
+
+  /**
+   * @param {string} commandId
+   * @param {'keys' | 'mouse'} type
+   * @param {number} index
+   * @param {string} bindingStr
+   * @returns {HTMLElement}
+   */
+  _renderBinding(commandId, type, index, bindingStr) {
+    const isRecording = this._recording &&
+      this._recording.commandId === commandId &&
+      this._recording.type === type &&
+      this._recording.index === index
+
+    if (isRecording) {
+      const wrapper = document.createElement('span')
+      wrapper.className = 'settings__binding settings__binding--recording'
+      wrapper.setAttribute('part', 'binding binding-recording')
+      const overlay = document.createElement('span')
+      overlay.className = 'settings__recording-overlay'
+      overlay.setAttribute('part', 'recording-overlay')
+      overlay.textContent = type === 'keys' ? 'Press a key...' : 'Click...'
+      wrapper.appendChild(overlay)
+
+      if (this._conflict) {
+        wrapper.appendChild(this._renderConflict())
+      }
+
+      return wrapper
+    }
+
+    const binding = document.createElement('span')
+    binding.className = 'settings__binding'
+    binding.setAttribute('part', 'binding')
+
+    const keysContainer = document.createElement('span')
+    keysContainer.className = 'settings__binding-keys'
+    keysContainer.setAttribute('part', 'binding-keys')
+
+    const parts = type === 'keys' ? formatKeyParts(bindingStr) : formatMouseParts(bindingStr)
+    for (const part of parts) {
+      const kbd = document.createElement('kbd')
+      kbd.className = 'settings__binding-key'
+      kbd.setAttribute('part', 'binding-key')
+      kbd.textContent = part
+      keysContainer.appendChild(kbd)
+    }
+    keysContainer.addEventListener('click', () => this._startRecording(commandId, type, index))
+    binding.appendChild(keysContainer)
+
+    const removeBtn = document.createElement('button')
+    removeBtn.className = 'settings__binding-remove'
+    removeBtn.setAttribute('part', 'binding-remove')
+    removeBtn.textContent = '\u00d7'
+    removeBtn.addEventListener('click', () => this._removeBinding(commandId, type, index))
+    binding.appendChild(removeBtn)
+
+    return binding
+  }
+
+  /** @returns {HTMLElement} */
+  _renderConflict() {
+    const conflict = /** @type {NonNullable<typeof this._conflict>} */ (this._conflict)
+    const conflictEl = document.createElement('span')
+    conflictEl.className = 'settings__conflict'
+    conflictEl.setAttribute('part', 'conflict')
+    conflictEl.textContent = `Already bound to "${conflict.label}". `
+
+    const acceptBtn = document.createElement('button')
+    acceptBtn.setAttribute('part', 'conflict-accept')
+    acceptBtn.textContent = 'Replace'
+    acceptBtn.addEventListener('click', () => this._acceptConflict())
+    conflictEl.appendChild(acceptBtn)
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.setAttribute('part', 'conflict-cancel')
+    cancelBtn.textContent = 'Cancel'
+    cancelBtn.addEventListener('click', () => this._cancelConflict())
+    conflictEl.appendChild(cancelBtn)
+
+    return conflictEl
+  }
+}
+
+/**
+ * Check if two string arrays are equal
+ * @param {string[]} a
+ * @param {string[]} b
+ * @returns {boolean}
+ */
+function arraysEqual(a, b) {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+/**
  * <context-menu> - Context menu driven by commands
  *
  * Attributes:
@@ -1788,6 +2478,9 @@ export function registerComponents() {
   }
   if (!customElements.get('context-menu')) {
     customElements.define('context-menu', ContextMenu)
+  }
+  if (!customElements.get('keybind-settings')) {
+    customElements.define('keybind-settings', KeybindSettings)
   }
 }
 

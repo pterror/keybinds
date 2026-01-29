@@ -63,6 +63,36 @@ command-palette::part(item-active) {
 | `item-keys` | Container for key badges |
 | `item-key` | Individual key (`<kbd>`) |
 
+## Settings Parts
+
+| Part | Description |
+|------|-------------|
+| `settings` | Root container |
+| `backdrop` | Overlay behind dialog |
+| `dialog` | Main dialog box |
+| `header` | Header container |
+| `title` | Title text |
+| `reset-all` | Reset All button |
+| `group` | Category group container |
+| `group-title` | Category heading |
+| `list` | Commands list (`<ul>`) |
+| `item` | Individual command (`<li>`) |
+| `item-label` | Command label text |
+| `item-bindings` | Container for all bindings |
+| `item-reset` | Per-command reset button |
+| `binding` | Individual binding span |
+| `binding-recording` | Binding in recording state |
+| `binding-keys` | Key display container |
+| `binding-key` | Individual key (`<kbd>`) |
+| `binding-remove` | Remove (×) button |
+| `item-add` | Add binding container |
+| `add-key` | Add Key button |
+| `add-mouse` | Add Mouse button |
+| `recording-overlay` | Recording prompt text |
+| `conflict` | Conflict warning message |
+| `conflict-accept` | Replace button |
+| `conflict-cancel` | Cancel button |
+
 ## BEM Classes
 
 Inside shadow DOM, elements have BEM class names matching their parts:

@@ -15,6 +15,10 @@ import {
   keybinds,
   BindingsStore,
   filterByMenu,
+  eventToBindingString,
+  eventToMouseBindingString,
+  findConflict,
+  KeybindSettings,
 } from './index.js'
 
 // --- Pure logic tests ---
@@ -670,5 +674,309 @@ describe('BindingsStore', () => {
     const store = new BindingsStore(schema, 'test:bindings')
     store.save({ open: { keys: ['ctrl+o'] } })
     expect(store.getOverrides()).toEqual({ open: { keys: ['ctrl+o'] } })
+  })
+})
+
+// --- eventToBindingString tests ---
+
+describe('eventToBindingString', () => {
+  test('converts simple key', () => {
+    const event = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK' })
+    expect(eventToBindingString(event)).toBe('k')
+  })
+
+  test('converts modified key', () => {
+    const event = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, shiftKey: true })
+    // On non-Mac, ctrl = $mod
+    expect(eventToBindingString(event)).toBe('$mod+shift+k')
+  })
+
+  test('returns null for bare modifier press', () => {
+    expect(eventToBindingString(new KeyboardEvent('keydown', { key: 'Shift', code: 'ShiftLeft' }))).toBeNull()
+    expect(eventToBindingString(new KeyboardEvent('keydown', { key: 'Control', code: 'ControlLeft' }))).toBeNull()
+    expect(eventToBindingString(new KeyboardEvent('keydown', { key: 'Alt', code: 'AltLeft' }))).toBeNull()
+    expect(eventToBindingString(new KeyboardEvent('keydown', { key: 'Meta', code: 'MetaLeft' }))).toBeNull()
+  })
+
+  test('normalizes $mod on non-Mac (ctrl)', () => {
+    const event = new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true })
+    expect(eventToBindingString(event)).toBe('$mod+s')
+  })
+
+  test('returns null for unknown key', () => {
+    const event = new KeyboardEvent('keydown', { key: 'Unidentified', code: 'Unidentified' })
+    expect(eventToBindingString(event)).toBeNull()
+  })
+
+  test('falls back to code-based key name', () => {
+    // Some browsers report special characters in event.key but the code is KeyA
+    const event = new KeyboardEvent('keydown', { key: 'å', code: 'KeyA', altKey: true })
+    expect(eventToBindingString(event)).toBe('alt+a')
+  })
+})
+
+describe('eventToMouseBindingString', () => {
+  test('converts left click', () => {
+    const event = new MouseEvent('mousedown', { button: 0 })
+    expect(eventToMouseBindingString(event)).toBe('click')
+  })
+
+  test('converts middle click', () => {
+    const event = new MouseEvent('mousedown', { button: 1 })
+    expect(eventToMouseBindingString(event)).toBe('middle')
+  })
+
+  test('converts right click', () => {
+    const event = new MouseEvent('mousedown', { button: 2 })
+    expect(eventToMouseBindingString(event)).toBe('right')
+  })
+
+  test('converts modified click', () => {
+    const event = new MouseEvent('mousedown', { button: 0, ctrlKey: true })
+    expect(eventToMouseBindingString(event)).toBe('$mod+click')
+  })
+
+  test('converts alt+shift+click', () => {
+    const event = new MouseEvent('mousedown', { button: 0, altKey: true, shiftKey: true })
+    expect(eventToMouseBindingString(event)).toBe('alt+shift+click')
+  })
+})
+
+describe('findConflict', () => {
+  const schema = {
+    save: { label: 'Save', keys: ['$mod+s'] },
+    open: { label: 'Open', keys: ['$mod+o'], mouse: ['$mod+click'] },
+    close: { label: 'Close', keys: ['$mod+w'] },
+  }
+
+  test('returns null when no conflict', () => {
+    expect(findConflict(schema, '$mod+k', 'keys')).toBeNull()
+  })
+
+  test('finds key conflict', () => {
+    const conflict = findConflict(schema, '$mod+s', 'keys')
+    expect(conflict).toEqual({ commandId: 'save', label: 'Save' })
+  })
+
+  test('finds mouse conflict', () => {
+    const conflict = findConflict(schema, '$mod+click', 'mouse')
+    expect(conflict).toEqual({ commandId: 'open', label: 'Open' })
+  })
+
+  test('excludes self by id', () => {
+    expect(findConflict(schema, '$mod+s', 'keys', 'save')).toBeNull()
+  })
+
+  test('normalizes through parse for accurate comparison', () => {
+    // ctrl+s should conflict with $mod+s on non-Mac
+    const conflict = findConflict(schema, 'ctrl+s', 'keys')
+    expect(conflict).toEqual({ commandId: 'save', label: 'Save' })
+  })
+})
+
+// --- KeybindSettings component tests ---
+
+describe('KeybindSettings', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    if (!customElements.get('keybind-settings')) {
+      customElements.define('keybind-settings', KeybindSettings)
+    }
+  })
+
+  const schema = {
+    save: { label: 'Save', category: 'File', keys: ['$mod+s'] },
+    open: { label: 'Open', category: 'File', keys: ['$mod+o'] },
+    delete: { label: 'Delete', category: 'Edit', keys: ['backspace'] },
+    hidden: { label: 'Hidden', keys: ['h'], hidden: true },
+  }
+
+  function createSettings() {
+    const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybind-settings'))
+    const store = new BindingsStore(schema, 'test:settings')
+    el.store = store
+    document.body.appendChild(el)
+    return { el, store }
+  }
+
+  function cleanup(/** @type {HTMLElement} */ el) {
+    el.remove()
+  }
+
+  test('renders groups from schema', () => {
+    const { el } = createSettings()
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const groups = shadow.querySelectorAll('.settings__group-title')
+    const titles = Array.from(groups).map(g => g.textContent)
+    expect(titles).toContain('File')
+    expect(titles).toContain('Edit')
+    cleanup(el)
+  })
+
+  test('excludes hidden commands', () => {
+    const { el } = createSettings()
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const labels = Array.from(shadow.querySelectorAll('.settings__item-label')).map(l => l.textContent)
+    expect(labels).not.toContain('Hidden')
+    cleanup(el)
+  })
+
+  test('shows bindings for commands', () => {
+    const { el } = createSettings()
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const keys = shadow.querySelectorAll('.settings__binding-key')
+    expect(keys.length).toBeGreaterThan(0)
+    cleanup(el)
+  })
+
+  test('remove button deletes a binding', () => {
+    const { el, store } = createSettings()
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const removeBtn = /** @type {HTMLButtonElement} */ (shadow.querySelector('.settings__binding-remove'))
+    expect(removeBtn).not.toBeNull()
+    removeBtn.click()
+    // After removing, the save command should have no keys
+    const bindings = store.get()
+    expect(bindings['save']?.keys).toEqual([])
+    cleanup(el)
+  })
+
+  test('reset individual command restores defaults', () => {
+    const { el, store } = createSettings()
+    store.save({ save: { keys: ['ctrl+shift+s'] } })
+    el.open = true
+
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const resetBtn = /** @type {HTMLButtonElement} */ (shadow.querySelectorAll('.settings__item-reset')[0])
+    resetBtn.click()
+
+    // save should be back to schema default
+    expect(store.get()['save']?.keys).toEqual(['$mod+s'])
+    cleanup(el)
+  })
+
+  test('reset all clears all overrides', () => {
+    const { el, store } = createSettings()
+    store.save({ save: { keys: ['ctrl+s'] }, open: { keys: ['ctrl+p'] } })
+    el.open = true
+
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const resetAllBtn = /** @type {HTMLButtonElement} */ (shadow.querySelector('.settings__reset-all'))
+    resetAllBtn.click()
+
+    expect(store.getOverrides()).toEqual({})
+    expect(store.get()['save']?.keys).toEqual(['$mod+s'])
+    cleanup(el)
+  })
+
+  test('dispatches close event', () => {
+    const { el } = createSettings()
+    el.open = true
+    const handler = mock(() => {})
+    el.addEventListener('close', handler)
+
+    // Click backdrop
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const backdrop = /** @type {HTMLElement} */ (shadow.querySelector('.settings__backdrop'))
+    backdrop.click()
+
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(el.open).toBe(false)
+    cleanup(el)
+  })
+
+  test('dispatches change event on binding modification', () => {
+    const { el } = createSettings()
+    el.open = true
+    const handler = mock(() => {})
+    el.addEventListener('change', handler)
+
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const removeBtn = /** @type {HTMLButtonElement} */ (shadow.querySelector('.settings__binding-remove'))
+    removeBtn.click()
+
+    expect(handler).toHaveBeenCalledTimes(1)
+    const call = /** @type {any[]} */ (handler.mock.calls[0])
+    expect(call[0].detail.commandId).toBe('save')
+    cleanup(el)
+  })
+
+  test('dispatches reset event', () => {
+    const { el, store } = createSettings()
+    store.save({ save: { keys: ['ctrl+s'] } })
+    el.open = true
+    const handler = mock(() => {})
+    el.addEventListener('reset', handler)
+
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const resetBtn = /** @type {HTMLButtonElement} */ (shadow.querySelectorAll('.settings__item-reset')[0])
+    resetBtn.click()
+
+    expect(handler).toHaveBeenCalledTimes(1)
+    const call = /** @type {any[]} */ (handler.mock.calls[0])
+    expect(call[0].detail.commandId).toBe('save')
+    cleanup(el)
+  })
+
+  test('re-renders on store change', () => {
+    const { el, store } = createSettings()
+    el.open = true
+
+    store.save({ save: { keys: ['ctrl+shift+s'] } })
+
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const keys = Array.from(shadow.querySelectorAll('.settings__binding-key')).map(k => k.textContent)
+    expect(keys.some(k => k === 'S')).toBe(true)
+    cleanup(el)
+  })
+
+  test('does not fire keybinds when settings is open', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const commands = [
+      { id: 'save', label: 'Save', keys: ['ctrl+s'], execute: fn },
+    ]
+    const kbCleanup = keybinds(commands, undefined, { target })
+
+    const settings = document.createElement('keybind-settings')
+    settings.setAttribute('open', '')
+    target.appendChild(settings)
+
+    const event = new KeyboardEvent('keydown', {
+      key: 's', code: 'KeyS', ctrlKey: true,
+    })
+    Object.defineProperty(event, 'target', { value: settings })
+    target.dispatchEvent(event)
+
+    expect(fn).not.toHaveBeenCalled()
+    kbCleanup()
+  })
+
+  test('override cleanup removes entry when matching defaults', () => {
+    const { el, store } = createSettings()
+    el.open = true
+
+    // First override to something different
+    store.save({ save: { keys: ['ctrl+shift+s'] } })
+    expect(store.getOverrides()['save']).toBeDefined()
+
+    // Remove the binding via the UI
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const removeBtn = /** @type {HTMLButtonElement} */ (shadow.querySelector('.settings__binding-remove'))
+    removeBtn.click()
+
+    // save now has empty keys, which doesn't match default, so override stays
+    expect(store.getOverrides()['save']).toBeDefined()
+
+    // Reset the command - this should remove the override
+    const resetBtn = /** @type {HTMLButtonElement} */ (shadow.querySelectorAll('.settings__item-reset')[0])
+    resetBtn.click()
+    expect(store.getOverrides()['save']).toBeUndefined()
+
+    cleanup(el)
   })
 })

@@ -111,6 +111,110 @@ Custom element: `<keybind-cheatsheet>`
 
 ---
 
+## KeybindSettings
+
+Custom element: `<keybind-settings>`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `store` | `BindingsStore` | Reactive bindings store instance |
+| `open` | `boolean` | Visibility state |
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `open` | boolean | When present, settings panel is visible |
+
+### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `close` | - | Settings panel was dismissed |
+| `change` | `{ commandId, keys?, mouse? }` | A binding was changed |
+| `reset` | `{ commandId? }` | Bindings were reset (per-command or all) |
+
+### CSS Parts
+
+| Part | Element |
+|------|---------|
+| `settings` | Root `.settings` div |
+| `backdrop` | Overlay div |
+| `dialog` | Main dialog container |
+| `header` | Header container |
+| `title` | Title text |
+| `reset-all` | Reset All button |
+| `group` | Category group div |
+| `group-title` | Category heading |
+| `list` | Commands ul |
+| `item` | Command li |
+| `item-label` | Label span |
+| `item-bindings` | Bindings container span |
+| `item-reset` | Per-command reset button |
+| `binding` | Individual binding span |
+| `binding-recording` | Binding in recording state |
+| `binding-keys` | Key display container |
+| `binding-key` | Individual kbd |
+| `binding-remove` | Remove (×) button |
+| `item-add` | Add binding container |
+| `add-key` | Add Key button |
+| `add-mouse` | Add Mouse button |
+| `recording-overlay` | Recording prompt text |
+| `conflict` | Conflict warning |
+| `conflict-accept` | Replace button |
+| `conflict-cancel` | Cancel button |
+
+### Keyboard Navigation
+
+| Key | Action |
+|-----|--------|
+| `Escape` | Cancel recording, or close panel |
+
+---
+
+## eventToBindingString(event)
+
+Convert a KeyboardEvent to a canonical binding string.
+
+```ts
+function eventToBindingString(event: KeyboardEvent): string | null
+```
+
+Returns `null` for bare modifier presses and unknown keys. Uses `$mod` for the platform modifier (Meta on Mac, Ctrl elsewhere).
+
+---
+
+## eventToMouseBindingString(event)
+
+Convert a MouseEvent to a canonical binding string.
+
+```ts
+function eventToMouseBindingString(event: MouseEvent): string | null
+```
+
+Maps button numbers to canonical names (0=click, 1=middle, 2=right).
+
+---
+
+## findConflict(schema, bindingStr, type, excludeId?)
+
+Check if a binding string conflicts with any command in a schema.
+
+```ts
+function findConflict(
+  schema: Schema,
+  bindingStr: string,
+  type: 'keys' | 'mouse',
+  excludeId?: string
+): { commandId: string, label: string } | null
+```
+
+Normalizes through parse → lookup for accurate cross-format comparison.
+
+---
+
 ## onModifierHold(modifiers, callback, options?)
 
 Utility for hold-to-show behavior.
