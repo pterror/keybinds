@@ -396,15 +396,6 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 }
 
 /**
- * Check if a command has any bindings
- * @param {Command} cmd
- * @returns {boolean}
- */
-function hasBoundKeys(cmd) {
-  return Boolean((cmd.keys && cmd.keys.length > 0) || (cmd.mouse && cmd.mouse.length > 0))
-}
-
-/**
  * Dedupe commands by ID (last wins - for registration order / inner scope)
  * @param {Command[]} commands
  * @returns {Command[]}
@@ -422,7 +413,6 @@ function dedupeCommands(commands) {
  * Search commands for command palette
  *
  * - Dedupes by ID (last registration wins - inner scope shadows outer)
- * - Hides commands with no bindings (no keys and no mouse)
  *
  * @param {Command[]} commands - Array of command definitions
  * @param {string} query - Search query
@@ -438,7 +428,6 @@ export function searchCommands(commands, query, context = {}, options = {}) {
 
   for (const cmd of dedupeCommands(commands)) {
     if (cmd.hidden) continue
-    if (!hasBoundKeys(cmd)) continue  // hide unbound
 
     /** @type {MatchResult | null} */
     let match = null
@@ -480,7 +469,6 @@ export function searchCommands(commands, query, context = {}, options = {}) {
  * Group commands by category
  *
  * - Dedupes by ID (last registration wins)
- * - Hides commands with no bindings
  *
  * @param {Command[]} commands - Array of command definitions
  * @param {Record<string, unknown>} [context] - Current context (for active state)
@@ -492,7 +480,6 @@ export function groupByCategory(commands, context = {}) {
 
   for (const cmd of dedupeCommands(commands)) {
     if (cmd.hidden) continue
-    if (!hasBoundKeys(cmd)) continue  // hide unbound
     const cat = cmd.category || 'Other'
     if (!groups[cat]) groups[cat] = []
     groups[cat].push({
@@ -1005,7 +992,7 @@ export class CommandPalette extends HTMLElement {
   _getAllVisible() {
     // Show all non-hidden commands when no query
     return this._commands
-      .filter(cmd => !cmd.hidden && ((cmd.keys && cmd.keys.length) || (cmd.mouse && cmd.mouse.length)))
+      .filter(cmd => !cmd.hidden)
       .map(cmd => ({
         ...cmd,
         active: !cmd.when || cmd.when(this._context),

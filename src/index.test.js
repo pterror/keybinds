@@ -231,12 +231,13 @@ describe('searchCommands', () => {
     expect(searchCommands(cmds, 'Hidden')).toHaveLength(0)
   })
 
-  test('excludes unbound commands', () => {
+  test('includes unbound commands', () => {
     const cmds = [
       ...commands,
       { id: 'unbound', label: 'Unbound cmd', execute: () => {} },
     ]
-    expect(searchCommands(cmds, 'Unbound')).toHaveLength(0)
+    expect(searchCommands(cmds, 'Unbound')).toHaveLength(1)
+    expect(searchCommands(cmds, 'Unbound')[0].id).toBe('unbound')
   })
 
   test('deduplicates by id (last wins)', () => {
@@ -292,10 +293,10 @@ describe('groupByCategory', () => {
     expect(allIds).not.toContain('h')
   })
 
-  test('excludes unbound commands', () => {
+  test('includes unbound commands', () => {
     const cmds = [...commands, { id: 'u', label: 'U', execute: () => {} }]
     const allIds = Object.values(groupByCategory(cmds)).flat().map(c => c.id)
-    expect(allIds).not.toContain('u')
+    expect(allIds).toContain('u')
   })
 
   test('reflects active state from context', () => {
