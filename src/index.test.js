@@ -294,10 +294,10 @@ describe('groupByCategory', () => {
     expect(allIds).not.toContain('h')
   })
 
-  test('includes unbound commands', () => {
+  test('excludes unbound commands', () => {
     const cmds = [...commands, { id: 'u', label: 'U', execute: () => {} }]
     const allIds = Object.values(groupByCategory(cmds)).flat().map(c => c.id)
-    expect(allIds).toContain('u')
+    expect(allIds).not.toContain('u')
   })
 
   test('reflects active state from context', () => {

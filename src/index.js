@@ -470,6 +470,7 @@ export function searchCommands(commands, query, context = {}, options = {}) {
  * Group commands by category
  *
  * - Dedupes by ID (last registration wins)
+ * - Excludes commands with no bindings (no keys and no mouse)
  *
  * @param {Command[]} commands - Array of command definitions
  * @param {Record<string, unknown>} [context] - Current context (for active state)
@@ -481,6 +482,7 @@ export function groupByCategory(commands, context = {}) {
 
   for (const cmd of dedupeCommands(commands)) {
     if (cmd.hidden) continue
+    if (!(cmd.keys?.length || cmd.mouse?.length)) continue
     const cat = cmd.category || 'Other'
     if (!groups[cat]) groups[cat] = []
     groups[cat].push({
