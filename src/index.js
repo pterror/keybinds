@@ -42,7 +42,7 @@
 /**
  * @typedef {{ score: number, positions?: number[] }} MatchResult
  * @typedef {(query: string, text: string) => MatchResult | null} Matcher
- * @typedef {{ matcher?: Matcher }} SearchOptions
+ * @typedef {{ matcher?: Matcher | undefined }} SearchOptions
  * @typedef {Command & { active: boolean, score: number, positions?: number[] }} ScoredCommand
  */
 
@@ -411,9 +411,43 @@ function dedupeCommands(commands) {
 }
 
 /**
- * Search commands for command palette
+ * Search commands with a given matcher
  *
  * - Dedupes by ID (last registration wins - inner scope shadows outer)
+ *
+ * @param {Command[]} commands - Array of command definitions
+ * @param {string} query - Search query
+ * @param {Record<string, unknown>} context - Current context
+ * @param {Matcher} matcher - Matcher function to score results
+ * @returns {ScoredCommand[]} Matching commands sorted by relevance (active first, then by score)
+ */
+export function matchCommands(commands, query, context, matcher) {
+  /** @type {ScoredCommand[]} */
+  const results = []
+
+  for (const cmd of dedupeCommands(commands)) {
+    if (cmd.hidden) continue
+
+    const match = matcher(query, cmd.label)
+      ?? matcher(query, cmd.id)
+      ?? (cmd.category ? matcher(query, cmd.category) : null)
+
+    if (!match) continue
+
+    /** @type {ScoredCommand} */
+    const scored = { ...cmd, active: isActive(cmd, context), score: match.score }
+    if (match.positions) scored.positions = match.positions
+    results.push(scored)
+  }
+
+  return results.sort((a, b) => {
+    if (a.active !== b.active) return (b.active ? 1 : 0) - (a.active ? 1 : 0)
+    return b.score - a.score
+  })
+}
+
+/**
+ * Search commands for command palette (defaults to fuzzy matching)
  *
  * @param {Command[]} commands - Array of command definitions
  * @param {string} query - Search query
@@ -422,48 +456,7 @@ function dedupeCommands(commands) {
  * @returns {ScoredCommand[]} Matching commands sorted by relevance (active first, then by score)
  */
 export function searchCommands(commands, query, context = {}, options = {}) {
-  const { matcher } = options
-  const q = query.toLowerCase()
-  /** @type {ScoredCommand[]} */
-  const results = []
-
-  for (const cmd of dedupeCommands(commands)) {
-    if (cmd.hidden) continue
-
-    /** @type {MatchResult | null} */
-    let match = null
-
-    if (matcher) {
-      // Custom matcher: try label, then id, then category
-      match = matcher(query, cmd.label)
-        ?? matcher(query, cmd.id)
-        ?? (cmd.category ? matcher(query, cmd.category) : null)
-    } else {
-      // Default: simple substring matching
-      const label = cmd.label.toLowerCase()
-      const id = cmd.id.toLowerCase()
-      const category = (cmd.category || '').toLowerCase()
-
-      if (label.startsWith(q)) match = { score: 3 }
-      else if (id.startsWith(q)) match = { score: 2 }
-      else if (category.startsWith(q)) match = { score: 2 }
-      else if (label.includes(q) || id.includes(q) || category.includes(q)) match = { score: 1 }
-    }
-
-    if (!match) continue
-
-    results.push({
-      ...cmd,
-      active: isActive(cmd, context),
-      score: match.score,
-      positions: match.positions
-    })
-  }
-
-  return results.sort((a, b) => {
-    if (a.active !== b.active) return (b.active ? 1 : 0) - (a.active ? 1 : 0)
-    return b.score - a.score
-  })
+  return matchCommands(commands, query, context, options.matcher ?? fuzzyMatcher)
 }
 
 /**

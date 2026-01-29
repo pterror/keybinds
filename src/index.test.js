@@ -6,6 +6,7 @@ import {
   mergeBindings,
   listBindings,
   fromBindings,
+  matchCommands,
   searchCommands,
   groupByCategory,
   executeCommand,
@@ -265,6 +266,30 @@ describe('searchCommands', () => {
     const results = searchCommands(commands, 'anything', {}, { matcher })
     expect(results).toHaveLength(1)
     expect(results[0].id).toBe('save')
+  })
+
+  test('defaults to fuzzy matching', () => {
+    const results = searchCommands(commands, 'svd')
+    expect(results.some(r => r.id === 'save')).toBe(true)
+    expect(results[0].positions).toBeDefined()
+  })
+})
+
+describe('matchCommands', () => {
+  const commands = [
+    { id: 'save', label: 'Save document', keys: ['$mod+s'], execute: () => {} },
+    { id: 'open', label: 'Open file', keys: ['$mod+o'], execute: () => {} },
+  ]
+
+  test('uses provided matcher', () => {
+    const results = matchCommands(commands, 'Save', {}, simpleMatcher)
+    expect(results).toHaveLength(1)
+    expect(results[0].id).toBe('save')
+  })
+
+  test('does not match when matcher rejects', () => {
+    const results = matchCommands(commands, 'svd', {}, simpleMatcher)
+    expect(results).toHaveLength(0)
   })
 })
 
