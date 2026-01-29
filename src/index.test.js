@@ -27,12 +27,12 @@ describe('fuzzyMatcher', () => {
   test('returns positions for matching characters', () => {
     const result = fuzzyMatcher('hlo', 'hello')
     expect(result).not.toBeNull()
-    expect(result.positions).toEqual([0, 2, 4])
+    expect(result?.positions).toEqual([0, 2, 4])
   })
 
   test('awards consecutive match bonus', () => {
-    const consecutive = fuzzyMatcher('he', 'hello')
-    const nonConsecutive = fuzzyMatcher('ho', 'hello')
+    const consecutive = /** @type {NonNullable<ReturnType<typeof fuzzyMatcher>>} */ (fuzzyMatcher('he', 'hello'))
+    const nonConsecutive = /** @type {NonNullable<ReturnType<typeof fuzzyMatcher>>} */ (fuzzyMatcher('ho', 'hello'))
     expect(consecutive.score).toBeGreaterThan(nonConsecutive.score)
   })
 
@@ -40,18 +40,18 @@ describe('fuzzyMatcher', () => {
     const result = fuzzyMatcher('d', 'save document')
     expect(result).not.toBeNull()
     // 'd' at index 5 is after a space → word-start bonus
-    expect(result.positions).toEqual([5])
+    expect(result?.positions).toEqual([5])
   })
 
   test('awards exact case bonus', () => {
-    const exact = fuzzyMatcher('S', 'Save')
-    const noExact = fuzzyMatcher('s', 'Save')
+    const exact = /** @type {NonNullable<ReturnType<typeof fuzzyMatcher>>} */ (fuzzyMatcher('S', 'Save'))
+    const noExact = /** @type {NonNullable<ReturnType<typeof fuzzyMatcher>>} */ (fuzzyMatcher('s', 'Save'))
     expect(exact.score).toBeGreaterThan(noExact.score)
   })
 
   test('includes ratio in score', () => {
-    const short = fuzzyMatcher('ab', 'ab')
-    const long = fuzzyMatcher('ab', 'a_________b')
+    const short = /** @type {NonNullable<ReturnType<typeof fuzzyMatcher>>} */ (fuzzyMatcher('ab', 'ab'))
+    const long = /** @type {NonNullable<ReturnType<typeof fuzzyMatcher>>} */ (fuzzyMatcher('ab', 'a_________b'))
     expect(short.score).toBeGreaterThan(long.score)
   })
 })
@@ -83,7 +83,7 @@ describe('validateCommands', () => {
   })
 
   test('throws on missing id', () => {
-    expect(() => validateCommands([{ label: 'X', execute: () => {} }]))
+    expect(() => validateCommands([/** @type {any} */ ({ label: 'X', execute: () => {} })]))
       .toThrow('Command missing id')
   })
 
@@ -120,24 +120,24 @@ describe('mergeBindings', () => {
 
   test('empty overrides returns schema unchanged', () => {
     const result = mergeBindings(schema, {})
-    expect(result.save.keys).toEqual(['$mod+s'])
-    expect(result.open.keys).toEqual(['$mod+o'])
+    expect(result['save']?.keys).toEqual(['$mod+s'])
+    expect(result['open']?.keys).toEqual(['$mod+o'])
   })
 
   test('overrides keys', () => {
     const result = mergeBindings(schema, { save: { keys: ['$mod+shift+s'] } })
-    expect(result.save.keys).toEqual(['$mod+shift+s'])
+    expect(result['save']?.keys).toEqual(['$mod+shift+s'])
   })
 
   test('overrides mouse', () => {
     const result = mergeBindings(schema, { open: { mouse: ['RightClick'] } })
-    expect(result.open.mouse).toEqual(['RightClick'])
+    expect(result['open']?.mouse).toEqual(['RightClick'])
   })
 
   test('nullish coalescing preserves original when override field is undefined', () => {
     const result = mergeBindings(schema, { open: { keys: ['$mod+p'] } })
-    expect(result.open.mouse).toEqual(['$mod+Click'])
-    expect(result.open.keys).toEqual(['$mod+p'])
+    expect(result['open']?.mouse).toEqual(['$mod+Click'])
+    expect(result['open']?.keys).toEqual(['$mod+p'])
   })
 
   test('unknown override IDs are ignored', () => {
@@ -154,7 +154,9 @@ describe('listBindings', () => {
     }
     const list = listBindings(schema)
     expect(list).toHaveLength(2)
-    expect(list[0]).toEqual({ id: 'save', label: 'Save', keys: ['$mod+s'] })
+    expect(list[0]?.id).toBe('save')
+    const first = /** @type {NonNullable<typeof list[0]>} */ (list[0])
+    expect(first).toEqual({ id: 'save', label: 'Save', keys: ['$mod+s'] })
   })
 
   test('filters hidden bindings', () => {
@@ -164,7 +166,7 @@ describe('listBindings', () => {
     }
     const list = listBindings(schema)
     expect(list).toHaveLength(1)
-    expect(list[0].id).toBe('save')
+    expect(list[0]?.id).toBe('save')
   })
 })
 
@@ -177,10 +179,10 @@ describe('fromBindings', () => {
   test('constructs commands from bindings and handlers', () => {
     const commands = fromBindings(bindings, { save: () => 'saved' })
     expect(commands).toHaveLength(1)
-    expect(commands[0].id).toBe('save')
-    expect(commands[0].label).toBe('Save')
-    expect(commands[0].category).toBe('File')
-    expect(commands[0].keys).toEqual(['$mod+s'])
+    expect(commands[0]?.id).toBe('save')
+    expect(commands[0]?.label).toBe('Save')
+    expect(commands[0]?.category).toBe('File')
+    expect(commands[0]?.keys).toEqual(['$mod+s'])
   })
 
   test('warns on orphan handler', () => {
@@ -197,8 +199,8 @@ describe('fromBindings', () => {
     const commands = fromBindings(bindings, { save: () => {} }, {
       save: { when: whenFn, captureInput: true },
     })
-    expect(commands[0].when).toBe(whenFn)
-    expect(commands[0].captureInput).toBe(true)
+    expect(commands[0]?.when).toBe(whenFn)
+    expect(commands[0]?.captureInput).toBe(true)
   })
 })
 
@@ -212,7 +214,7 @@ describe('searchCommands', () => {
   test('matches by label', () => {
     const results = searchCommands(commands, 'Save')
     expect(results.length).toBeGreaterThan(0)
-    expect(results[0].id).toBe('save')
+    expect(results[0]?.id).toBe('save')
   })
 
   test('matches by id', () => {
@@ -239,7 +241,7 @@ describe('searchCommands', () => {
       { id: 'unbound', label: 'Unbound cmd', execute: () => {} },
     ]
     expect(searchCommands(cmds, 'Unbound')).toHaveLength(1)
-    expect(searchCommands(cmds, 'Unbound')[0].id).toBe('unbound')
+    expect(searchCommands(cmds, 'Unbound')[0]?.id).toBe('unbound')
   })
 
   test('deduplicates by id (last wins)', () => {
@@ -249,7 +251,7 @@ describe('searchCommands', () => {
     ]
     const results = searchCommands(cmds, 'Save')
     expect(results).toHaveLength(1)
-    expect(results[0].label).toBe('Save v2')
+    expect(results[0]?.label).toBe('Save v2')
   })
 
   test('sorts active before inactive, then by score', () => {
@@ -262,16 +264,17 @@ describe('searchCommands', () => {
   })
 
   test('uses custom matcher', () => {
-    const matcher = (q, t) => t.includes('Save') ? { score: 10, positions: [0] } : null
+    /** @type {import('./index.js').Matcher} */
+    const matcher = (_q, t) => t.includes('Save') ? { score: 10, positions: [0] } : null
     const results = searchCommands(commands, 'anything', {}, { matcher })
     expect(results).toHaveLength(1)
-    expect(results[0].id).toBe('save')
+    expect(results[0]?.id).toBe('save')
   })
 
   test('defaults to fuzzy matching', () => {
     const results = searchCommands(commands, 'svd')
     expect(results.some(r => r.id === 'save')).toBe(true)
-    expect(results[0].positions).toBeDefined()
+    expect(results[0]?.positions).toBeDefined()
   })
 })
 
@@ -284,7 +287,7 @@ describe('matchCommands', () => {
   test('uses provided matcher', () => {
     const results = matchCommands(commands, 'Save', {}, simpleMatcher)
     expect(results).toHaveLength(1)
-    expect(results[0].id).toBe('save')
+    expect(results[0]?.id).toBe('save')
   })
 
   test('does not match when matcher rejects', () => {
@@ -310,7 +313,7 @@ describe('groupByCategory', () => {
   test('defaults to "Other" when no category', () => {
     const groups = groupByCategory(commands)
     expect(groups['Other']).toBeDefined()
-    expect(groups['Other'][0].id).toBe('misc')
+    expect(groups['Other']?.[0]?.id).toBe('misc')
   })
 
   test('excludes hidden commands', () => {
@@ -327,10 +330,10 @@ describe('groupByCategory', () => {
 
   test('reflects active state from context', () => {
     const cmds = [
-      { id: 'a', label: 'A', keys: ['a'], when: ctx => ctx.ready, execute: () => {} },
+      { id: 'a', label: 'A', keys: ['a'], when: (/** @type {Record<string, unknown>} */ ctx) => /** @type {boolean} */ (ctx['ready']), execute: () => {} },
     ]
     const groups = groupByCategory(cmds, { ready: false })
-    expect(groups['Other'][0].active).toBe(false)
+    expect(groups['Other']?.[0]?.active).toBe(false)
   })
 
   test('deduplicates by id', () => {
@@ -340,7 +343,7 @@ describe('groupByCategory', () => {
     ]
     const groups = groupByCategory(cmds)
     expect(groups['File']).toHaveLength(1)
-    expect(groups['File'][0].label).toBe('Save v2')
+    expect(groups['File']?.[0]?.label).toBe('Save v2')
   })
 })
 
@@ -352,7 +355,7 @@ describe('filterByMenu', () => {
     ]
     const results = filterByMenu(cmds, 'node')
     expect(results).toHaveLength(1)
-    expect(results[0].id).toBe('a')
+    expect(results[0]?.id).toBe('a')
   })
 
   test('filters by array menu field', () => {
@@ -362,7 +365,7 @@ describe('filterByMenu', () => {
     ]
     const results = filterByMenu(cmds, 'node')
     expect(results).toHaveLength(1)
-    expect(results[0].id).toBe('a')
+    expect(results[0]?.id).toBe('a')
   })
 
   test('excludes hidden commands', () => {
@@ -379,17 +382,17 @@ describe('filterByMenu', () => {
     ]
     const results = filterByMenu(cmds, 'node')
     expect(results).toHaveLength(1)
-    expect(results[0].label).toBe('A v2')
+    expect(results[0]?.label).toBe('A v2')
   })
 
   test('returns active state from context', () => {
     const cmds = [
-      { id: 'a', label: 'A', menu: 'node', when: ctx => ctx.ready, execute: () => {} },
+      { id: 'a', label: 'A', menu: 'node', when: (/** @type {Record<string, unknown>} */ ctx) => /** @type {boolean} */ (ctx['ready']), execute: () => {} },
     ]
     const active = filterByMenu(cmds, 'node', { ready: true })
-    expect(active[0].active).toBe(true)
+    expect(active[0]?.active).toBe(true)
     const inactive = filterByMenu(cmds, 'node', { ready: false })
-    expect(inactive[0].active).toBe(false)
+    expect(inactive[0]?.active).toBe(false)
   })
 
   test('returns empty when no match', () => {
@@ -561,7 +564,8 @@ describe('keybinds', () => {
     }))
 
     expect(onExecute).toHaveBeenCalledTimes(1)
-    expect(onExecute.mock.calls[0][0].id).toBe('save')
+    const call = /** @type {any[]} */ (onExecute.mock.calls[0])
+    expect(call[0].id).toBe('save')
     cleanup()
   })
 
@@ -569,7 +573,7 @@ describe('keybinds', () => {
     const fn = mock(() => {})
     const target = document.createElement('div')
     const commands = [
-      { id: 'x', label: 'X', keys: ['ctrl+x'], when: ctx => ctx.ready, execute: fn },
+      { id: 'x', label: 'X', keys: ['ctrl+x'], when: (/** @type {Record<string, unknown>} */ ctx) => /** @type {boolean} */ (ctx['ready']), execute: fn },
     ]
     const cleanup = keybinds(commands, () => ({ ready: true }), { target })
 
@@ -578,7 +582,8 @@ describe('keybinds', () => {
     }))
 
     expect(fn).toHaveBeenCalled()
-    expect(fn.mock.calls[0][0]).toEqual({ ready: true })
+    const call = /** @type {any[]} */ (fn.mock.calls[0])
+    expect(call[0]).toEqual({ ready: true })
     cleanup()
   })
 })
@@ -595,34 +600,34 @@ describe('BindingsStore', () => {
 
   test('loads with schema defaults', () => {
     const store = new BindingsStore(schema, 'test:bindings')
-    expect(store.get().save.keys).toEqual(['$mod+s'])
+    expect(store.get()['save']?.keys).toEqual(['$mod+s'])
   })
 
   test('saves overrides to localStorage', () => {
     const store = new BindingsStore(schema, 'test:bindings')
     store.save({ save: { keys: ['$mod+shift+s'] } })
 
-    const stored = JSON.parse(localStorage.getItem('test:bindings'))
+    const stored = JSON.parse(/** @type {string} */ (localStorage.getItem('test:bindings')))
     expect(stored.save.keys).toEqual(['$mod+shift+s'])
   })
 
   test('merges overrides into bindings', () => {
     const store = new BindingsStore(schema, 'test:bindings')
     store.save({ save: { keys: ['$mod+shift+s'] } })
-    expect(store.get().save.keys).toEqual(['$mod+shift+s'])
-    expect(store.get().open.keys).toEqual(['$mod+o'])
+    expect(store.get()['save']?.keys).toEqual(['$mod+shift+s'])
+    expect(store.get()['open']?.keys).toEqual(['$mod+o'])
   })
 
   test('loads persisted overrides on construction', () => {
     localStorage.setItem('test:bindings', JSON.stringify({ save: { keys: ['ctrl+s'] } }))
     const store = new BindingsStore(schema, 'test:bindings')
-    expect(store.get().save.keys).toEqual(['ctrl+s'])
+    expect(store.get()['save']?.keys).toEqual(['ctrl+s'])
   })
 
   test('handles corrupt JSON gracefully', () => {
     localStorage.setItem('test:bindings', 'not json')
     const store = new BindingsStore(schema, 'test:bindings')
-    expect(store.get().save.keys).toEqual(['$mod+s'])
+    expect(store.get()['save']?.keys).toEqual(['$mod+s'])
   })
 
   test('dispatches change event on save', () => {
@@ -633,7 +638,8 @@ describe('BindingsStore', () => {
     store.save({ save: { keys: ['ctrl+s'] } })
 
     expect(handler).toHaveBeenCalledTimes(1)
-    const detail = handler.mock.calls[0][0].detail
+    const call = /** @type {any[]} */ (handler.mock.calls[0])
+    const detail = call[0].detail
     expect(detail.bindings.save.keys).toEqual(['ctrl+s'])
     expect(detail.overrides).toEqual({ save: { keys: ['ctrl+s'] } })
   })
