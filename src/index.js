@@ -36,6 +36,7 @@
  * @property {(ctx: Record<string, unknown>, event?: Event) => unknown} execute - Action
  * @property {boolean | undefined} [hidden] - Hide from search
  * @property {boolean | undefined} [captureInput] - Fire even in input fields
+ * @property {string | string[] | undefined} [menu] - Context menu tag(s)
  */
 
 /**
@@ -492,6 +493,29 @@ export function groupByCategory(commands, context = {}) {
 }
 
 /**
+ * Filter commands by menu tag
+ *
+ * - Dedupes by ID (last registration wins)
+ *
+ * @param {Command[]} commands - Array of command definitions
+ * @param {string} menu - Menu tag to filter by
+ * @param {Record<string, unknown>} [context] - Current context (for active state)
+ * @returns {(Command & { active: boolean })[]} Matching commands
+ */
+export function filterByMenu(commands, menu, context = {}) {
+  const results = []
+  for (const cmd of dedupeCommands(commands)) {
+    if (cmd.hidden) continue
+    const menus = cmd.menu
+    if (!menus) continue
+    const matches = Array.isArray(menus) ? menus.includes(menu) : menus === menu
+    if (!matches) continue
+    results.push({ ...cmd, active: isActive(cmd, context) })
+  }
+  return results
+}
+
+/**
  * Validate all commands upfront (call on init to catch typos early)
  * @param {Command[]} commands
  * @returns {true}
@@ -583,6 +607,7 @@ export function formatKeyParts(key) {
  * @property {string[] | undefined} [keys] - Default keyboard triggers
  * @property {string[] | undefined} [mouse] - Default mouse triggers
  * @property {boolean | undefined} [hidden] - Hide from search/settings
+ * @property {string | string[] | undefined} [menu] - Context menu tag(s)
  */
 
 /**
@@ -648,6 +673,7 @@ export function fromBindings(bindings, handlers, options = {}) {
       keys: binding.keys,
       mouse: binding.mouse,
       hidden: binding.hidden,
+      menu: binding.menu,
       execute: handler,
       ...options[id]
     })
@@ -1419,6 +1445,299 @@ export function onModifierHold(modifiers, callback, options = {}) {
 }
 
 /**
+ * <context-menu> - Context menu driven by commands
+ *
+ * Attributes:
+ *   open         - Show/hide the menu
+ *   auto-trigger - Wire contextmenu event on target element
+ *   menu         - Menu tag to filter commands by
+ *   target       - CSS selector for contextmenu target (defaults to parentElement)
+ *
+ * Properties:
+ *   commands: Command[]     - Array of command definitions
+ *   context: object         - Context for `when` checks
+ *   open: boolean           - Show/hide the menu
+ *   menu: string            - Menu tag to filter by
+ *   position: { x: number, y: number } - Menu position
+ *
+ * Events:
+ *   execute - Fired when command is executed (detail: { command })
+ *   close   - Fired when menu is dismissed
+ *
+ * BEM classes:
+ *   .context-menu
+ *   .context-menu__backdrop
+ *   .context-menu__list
+ *   .context-menu__separator
+ *   .context-menu__item
+ *   .context-menu__item--disabled
+ *   .context-menu__item--active
+ *   .context-menu__item-label
+ *   .context-menu__item-keys
+ *   .context-menu__item-key
+ */
+export class ContextMenu extends HTMLElement {
+  static get observedAttributes() {
+    return ['open', 'auto-trigger', 'menu', 'target']
+  }
+
+  constructor() {
+    super()
+    /** @type {Command[]} */
+    this._commands = []
+    /** @type {Record<string, unknown>} */
+    this._context = {}
+    /** @type {string} */
+    this._menu = ''
+    /** @type {{ x: number, y: number }} */
+    this._position = { x: 0, y: 0 }
+    /** @type {(Command & { active: boolean })[]} */
+    this._items = []
+    /** @type {number} */
+    this._activeIndex = -1
+    /** @type {(() => void) | null} */
+    this._cleanupTrigger = null
+
+    this.attachShadow({ mode: 'open' })
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: none; }
+        :host([open]) { display: block; }
+        * { box-sizing: border-box; }
+      </style>
+      <div class="context-menu" part="context-menu">
+        <div class="context-menu__backdrop" part="backdrop"></div>
+        <ul class="context-menu__list" part="list" role="menu"></ul>
+      </div>
+    `
+
+    this._backdrop = this.shadowRoot.querySelector('.context-menu__backdrop')
+    this._list = this.shadowRoot.querySelector('.context-menu__list')
+
+    this._backdrop.addEventListener('click', () => this._close())
+    this._backdrop.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      this._close()
+    })
+  }
+
+  get commands() { return this._commands }
+  set commands(val) {
+    this._commands = val || []
+    if (this.open) this._buildItems()
+  }
+
+  get context() { return this._context }
+  set context(val) {
+    this._context = val || {}
+    if (this.open) this._buildItems()
+  }
+
+  get menu() { return this._menu }
+  set menu(val) {
+    this._menu = val || ''
+    if (this.open) this._buildItems()
+  }
+
+  get open() { return this.hasAttribute('open') }
+  set open(val) {
+    if (val) this.setAttribute('open', '')
+    else this.removeAttribute('open')
+  }
+
+  get position() { return this._position }
+  set position(val) {
+    this._position = val || { x: 0, y: 0 }
+    if (this.open) this._updatePosition()
+  }
+
+  attributeChangedCallback(name, oldVal, newVal) {
+    if (name === 'open') {
+      if (newVal !== null) this._onOpen()
+      else this._onClose()
+    } else if (name === 'auto-trigger') {
+      this._setupAutoTrigger(newVal !== null)
+    } else if (name === 'menu') {
+      this._menu = newVal || ''
+      if (this.open) this._buildItems()
+    }
+  }
+
+  connectedCallback() {
+    if (this.hasAttribute('auto-trigger')) {
+      this._setupAutoTrigger(true)
+    }
+  }
+
+  disconnectedCallback() {
+    this._setupAutoTrigger(false)
+  }
+
+  /** @param {boolean} enable */
+  _setupAutoTrigger(enable) {
+    if (this._cleanupTrigger) {
+      this._cleanupTrigger()
+      this._cleanupTrigger = null
+    }
+    if (!enable) return
+
+    /** @param {Event} e */
+    const handler = (e) => {
+      const event = /** @type {MouseEvent} */ (e)
+      event.preventDefault()
+      this._position = { x: event.clientX, y: event.clientY }
+      this._buildItems()
+      this.open = true
+    }
+
+    const selector = this.getAttribute('target')
+    const target = selector ? document.querySelector(selector) : this.parentElement
+    if (!target) return
+
+    target.addEventListener('contextmenu', handler)
+    this._cleanupTrigger = () => target.removeEventListener('contextmenu', handler)
+  }
+
+  _onOpen() {
+    this._activeIndex = -1
+    this._buildItems()
+    this._updatePosition()
+    this._keyHandler = (/** @type {KeyboardEvent} */ e) => this._handleKey(e)
+    this.shadowRoot.addEventListener('keydown', this._keyHandler)
+    requestAnimationFrame(() => this._list.focus())
+  }
+
+  _onClose() {
+    if (this._keyHandler) {
+      this.shadowRoot.removeEventListener('keydown', this._keyHandler)
+      this._keyHandler = null
+    }
+  }
+
+  _close() {
+    this.open = false
+    this.dispatchEvent(new CustomEvent('close'))
+  }
+
+  _buildItems() {
+    this._items = this._menu
+      ? filterByMenu(this._commands, this._menu, this._context)
+      : this._commands
+          .filter(cmd => !cmd.hidden)
+          .map(cmd => ({ ...cmd, active: isActive(cmd, this._context) }))
+    this._render()
+  }
+
+  _updatePosition() {
+    const { x, y } = this._position
+    const list = this._list
+    list.style.position = 'fixed'
+    list.style.left = `${x}px`
+    list.style.top = `${y}px`
+
+    // Defer clamping to after render
+    requestAnimationFrame(() => {
+      const rect = list.getBoundingClientRect()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      if (rect.right > vw) list.style.left = `${Math.max(0, vw - rect.width)}px`
+      if (rect.bottom > vh) list.style.top = `${Math.max(0, vh - rect.height)}px`
+    })
+  }
+
+  _render() {
+    this._list.innerHTML = ''
+    this._list.setAttribute('tabindex', '0')
+
+    let lastCategory = null
+    for (let i = 0; i < this._items.length; i++) {
+      const cmd = this._items[i]
+
+      // Category separator
+      const cat = cmd.category || null
+      if (cat !== lastCategory && lastCategory !== null) {
+        const sep = document.createElement('li')
+        sep.className = 'context-menu__separator'
+        sep.setAttribute('part', 'separator')
+        sep.setAttribute('role', 'separator')
+        this._list.appendChild(sep)
+      }
+      lastCategory = cat
+
+      const li = document.createElement('li')
+      li.className = 'context-menu__item'
+      if (i === this._activeIndex) li.className += ' context-menu__item--active'
+      if (!cmd.active) li.className += ' context-menu__item--disabled'
+      li.setAttribute('part', `item${i === this._activeIndex ? ' item-active' : ''}${!cmd.active ? ' item-disabled' : ''}`)
+      li.setAttribute('role', 'menuitem')
+      li.dataset.index = String(i)
+
+      const label = document.createElement('span')
+      label.className = 'context-menu__item-label'
+      label.setAttribute('part', 'item-label')
+      label.textContent = cmd.label
+      li.appendChild(label)
+
+      if (cmd.keys && cmd.keys[0]) {
+        const keyContainer = document.createElement('span')
+        keyContainer.className = 'context-menu__item-keys'
+        keyContainer.setAttribute('part', 'item-keys')
+        for (const part of formatKeyParts(cmd.keys[0])) {
+          const kbd = document.createElement('kbd')
+          kbd.className = 'context-menu__item-key'
+          kbd.setAttribute('part', 'item-key')
+          kbd.textContent = part
+          keyContainer.appendChild(kbd)
+        }
+        li.appendChild(keyContainer)
+      }
+
+      li.addEventListener('click', () => this._execute(i))
+      li.addEventListener('mouseenter', () => {
+        this._activeIndex = i
+        this._render()
+      })
+
+      this._list.appendChild(li)
+    }
+  }
+
+  /** @param {KeyboardEvent} e */
+  _handleKey(e) {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        this._activeIndex = Math.min(this._activeIndex + 1, this._items.length - 1)
+        this._render()
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        this._activeIndex = Math.max(this._activeIndex - 1, 0)
+        this._render()
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (this._activeIndex >= 0) this._execute(this._activeIndex)
+        break
+      case 'Escape':
+        e.preventDefault()
+        this._close()
+        break
+    }
+  }
+
+  /** @param {number} index */
+  _execute(index) {
+    const cmd = this._items[index]
+    if (!cmd || !cmd.active) return
+
+    this._close()
+    executeCommand(this._commands, cmd.id, this._context)
+    this.dispatchEvent(new CustomEvent('execute', { detail: { command: cmd } }))
+  }
+}
+
+/**
  * Register all keybind components
  * Call this once to define the custom elements
  */
@@ -1428,6 +1747,9 @@ export function registerComponents() {
   }
   if (!customElements.get('keybind-cheatsheet')) {
     customElements.define('keybind-cheatsheet', KeybindCheatsheet)
+  }
+  if (!customElements.get('context-menu')) {
+    customElements.define('context-menu', ContextMenu)
   }
 }
 

@@ -13,6 +13,7 @@ import {
   formatMouseParts,
   keybinds,
   BindingsStore,
+  filterByMenu,
 } from './index.js'
 
 // --- Pure logic tests ---
@@ -315,6 +316,62 @@ describe('groupByCategory', () => {
     const groups = groupByCategory(cmds)
     expect(groups['File']).toHaveLength(1)
     expect(groups['File'][0].label).toBe('Save v2')
+  })
+})
+
+describe('filterByMenu', () => {
+  test('filters by string menu field', () => {
+    const cmds = [
+      { id: 'a', label: 'A', menu: 'node', execute: () => {} },
+      { id: 'b', label: 'B', menu: 'edge', execute: () => {} },
+    ]
+    const results = filterByMenu(cmds, 'node')
+    expect(results).toHaveLength(1)
+    expect(results[0].id).toBe('a')
+  })
+
+  test('filters by array menu field', () => {
+    const cmds = [
+      { id: 'a', label: 'A', menu: ['node', 'edge'], execute: () => {} },
+      { id: 'b', label: 'B', menu: 'edge', execute: () => {} },
+    ]
+    const results = filterByMenu(cmds, 'node')
+    expect(results).toHaveLength(1)
+    expect(results[0].id).toBe('a')
+  })
+
+  test('excludes hidden commands', () => {
+    const cmds = [
+      { id: 'a', label: 'A', menu: 'node', hidden: true, execute: () => {} },
+    ]
+    expect(filterByMenu(cmds, 'node')).toHaveLength(0)
+  })
+
+  test('deduplicates by id', () => {
+    const cmds = [
+      { id: 'a', label: 'A v1', menu: 'node', execute: () => {} },
+      { id: 'a', label: 'A v2', menu: 'node', execute: () => {} },
+    ]
+    const results = filterByMenu(cmds, 'node')
+    expect(results).toHaveLength(1)
+    expect(results[0].label).toBe('A v2')
+  })
+
+  test('returns active state from context', () => {
+    const cmds = [
+      { id: 'a', label: 'A', menu: 'node', when: ctx => ctx.ready, execute: () => {} },
+    ]
+    const active = filterByMenu(cmds, 'node', { ready: true })
+    expect(active[0].active).toBe(true)
+    const inactive = filterByMenu(cmds, 'node', { ready: false })
+    expect(inactive[0].active).toBe(false)
+  })
+
+  test('returns empty when no match', () => {
+    const cmds = [
+      { id: 'a', label: 'A', menu: 'node', execute: () => {} },
+    ]
+    expect(filterByMenu(cmds, 'nonexistent')).toHaveLength(0)
   })
 })
 
