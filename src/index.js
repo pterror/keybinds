@@ -812,7 +812,7 @@ export function fuzzyMatcher(query, text) {
       // Consecutive match bonus
       if (ti === lastMatch + 1) score += 2
       // Word start bonus (after space/hyphen/underscore or at beginning)
-      if (ti === 0 || ' -_'.includes(t[ti - 1])) score += 3
+      if (ti === 0 || ' -_'.includes(/** @type {string} */ (t[ti - 1]))) score += 3
       // Exact case match bonus
       if (query[qi] === text[ti]) score += 1
       lastMatch = ti
@@ -887,8 +887,8 @@ export class CommandPalette extends HTMLElement {
     /** @type {(() => void) | null} */
     this._cleanupTrigger = null
 
-    this.attachShadow({ mode: 'open' })
-    this.shadowRoot.innerHTML = `
+    const shadow = this.attachShadow({ mode: 'open' })
+    shadow.innerHTML = `
       <style>
         :host { display: none; }
         :host([open]) { display: block; }
@@ -910,9 +910,12 @@ export class CommandPalette extends HTMLElement {
       </div>
     `
 
-    this._backdrop = this.shadowRoot.querySelector('.palette__backdrop')
-    this._input = this.shadowRoot.querySelector('.palette__input')
-    this._list = this.shadowRoot.querySelector('.palette__list')
+    /** @type {HTMLElement} */
+    this._backdrop = /** @type {HTMLElement} */ (shadow.querySelector('.palette__backdrop'))
+    /** @type {HTMLInputElement} */
+    this._input = /** @type {HTMLInputElement} */ (shadow.querySelector('.palette__input'))
+    /** @type {HTMLElement} */
+    this._list = /** @type {HTMLElement} */ (shadow.querySelector('.palette__list'))
 
     this._backdrop.addEventListener('click', () => this._close())
     this._input.addEventListener('input', () => this._search())
@@ -943,7 +946,12 @@ export class CommandPalette extends HTMLElement {
     else this.removeAttribute('open')
   }
 
-  attributeChangedCallback(name, oldVal, newVal) {
+  /**
+   * @param {string} name
+   * @param {string | null} _oldVal
+   * @param {string | null} newVal
+   */
+  attributeChangedCallback(name, _oldVal, newVal) {
     if (name === 'open') {
       if (newVal !== null) this._onOpen()
       else this._onClose()
@@ -1040,7 +1048,7 @@ export class CommandPalette extends HTMLElement {
       li.setAttribute('part', `item${i === this._activeIndex ? ' item-active' : ''}${!cmd.active ? ' item-disabled' : ''}`)
       li.setAttribute('role', 'option')
       li.setAttribute('aria-selected', i === this._activeIndex ? 'true' : 'false')
-      li.dataset.index = String(i)
+      li.dataset['index'] = String(i)
 
       const label = document.createElement('span')
       label.className = 'palette__item-label'
@@ -1050,14 +1058,15 @@ export class CommandPalette extends HTMLElement {
         // Render with highlights
         const posSet = new Set(cmd.positions)
         for (let j = 0; j < cmd.label.length; j++) {
+          const ch = /** @type {string} */ (cmd.label[j])
           if (posSet.has(j)) {
             const mark = document.createElement('mark')
             mark.className = 'palette__item-label-match'
             mark.setAttribute('part', 'item-label-match')
-            mark.textContent = cmd.label[j]
+            mark.textContent = ch
             label.appendChild(mark)
           } else {
-            label.appendChild(document.createTextNode(cmd.label[j]))
+            label.appendChild(document.createTextNode(ch))
           }
         }
       } else {
@@ -1183,8 +1192,8 @@ export class KeybindCheatsheet extends HTMLElement {
     /** @type {(() => void) | null} */
     this._cleanupTrigger = null
 
-    this.attachShadow({ mode: 'open' })
-    this.shadowRoot.innerHTML = `
+    const shadow = this.attachShadow({ mode: 'open' })
+    shadow.innerHTML = `
       <style>
         :host { display: none; }
         :host([open]) { display: block; }
@@ -1196,8 +1205,10 @@ export class KeybindCheatsheet extends HTMLElement {
       </div>
     `
 
-    this._backdrop = this.shadowRoot.querySelector('.cheatsheet__backdrop')
-    this._dialog = this.shadowRoot.querySelector('.cheatsheet__dialog')
+    /** @type {HTMLElement} */
+    this._backdrop = /** @type {HTMLElement} */ (shadow.querySelector('.cheatsheet__backdrop'))
+    /** @type {HTMLElement} */
+    this._dialog = /** @type {HTMLElement} */ (shadow.querySelector('.cheatsheet__dialog'))
 
     this._backdrop.addEventListener('click', () => this._close())
   }
@@ -1220,7 +1231,12 @@ export class KeybindCheatsheet extends HTMLElement {
     else this.removeAttribute('open')
   }
 
-  attributeChangedCallback(name, oldVal, newVal) {
+  /**
+   * @param {string} name
+   * @param {string | null} _oldVal
+   * @param {string | null} newVal
+   */
+  attributeChangedCallback(name, _oldVal, newVal) {
     if (name === 'open' && newVal !== null) {
       this._render()
     } else if (name === 'auto-trigger') {
@@ -1497,9 +1513,11 @@ export class ContextMenu extends HTMLElement {
     this._activeIndex = -1
     /** @type {(() => void) | null} */
     this._cleanupTrigger = null
+    /** @type {((e: Event) => void) | null} */
+    this._keyHandler = null
 
-    this.attachShadow({ mode: 'open' })
-    this.shadowRoot.innerHTML = `
+    const shadow = this.attachShadow({ mode: 'open' })
+    shadow.innerHTML = `
       <style>
         :host { display: none; }
         :host([open]) { display: block; }
@@ -1511,8 +1529,10 @@ export class ContextMenu extends HTMLElement {
       </div>
     `
 
-    this._backdrop = this.shadowRoot.querySelector('.context-menu__backdrop')
-    this._list = this.shadowRoot.querySelector('.context-menu__list')
+    /** @type {HTMLElement} */
+    this._backdrop = /** @type {HTMLElement} */ (shadow.querySelector('.context-menu__backdrop'))
+    /** @type {HTMLElement} */
+    this._list = /** @type {HTMLElement} */ (shadow.querySelector('.context-menu__list'))
 
     this._backdrop.addEventListener('click', () => this._close())
     this._backdrop.addEventListener('contextmenu', (e) => {
@@ -1551,7 +1571,12 @@ export class ContextMenu extends HTMLElement {
     if (this.open) this._updatePosition()
   }
 
-  attributeChangedCallback(name, oldVal, newVal) {
+  /**
+   * @param {string} name
+   * @param {string | null} _oldVal
+   * @param {string | null} newVal
+   */
+  attributeChangedCallback(name, _oldVal, newVal) {
     if (name === 'open') {
       if (newVal !== null) this._onOpen()
       else this._onClose()
@@ -1602,14 +1627,18 @@ export class ContextMenu extends HTMLElement {
     this._activeIndex = -1
     this._buildItems()
     this._updatePosition()
-    this._keyHandler = (/** @type {KeyboardEvent} */ e) => this._handleKey(e)
-    this.shadowRoot.addEventListener('keydown', this._keyHandler)
+    /** @type {(e: Event) => void} */
+    const handler = (e) => this._handleKey(/** @type {KeyboardEvent} */ (e))
+    this._keyHandler = handler
+    const shadow = /** @type {ShadowRoot} */ (this.shadowRoot)
+    shadow.addEventListener('keydown', handler)
     requestAnimationFrame(() => this._list.focus())
   }
 
   _onClose() {
     if (this._keyHandler) {
-      this.shadowRoot.removeEventListener('keydown', this._keyHandler)
+      const shadow = /** @type {ShadowRoot} */ (this.shadowRoot)
+      shadow.removeEventListener('keydown', this._keyHandler)
       this._keyHandler = null
     }
   }
@@ -1651,7 +1680,7 @@ export class ContextMenu extends HTMLElement {
 
     let lastCategory = null
     for (let i = 0; i < this._items.length; i++) {
-      const cmd = this._items[i]
+      const cmd = /** @type {Command & { active: boolean }} */ (this._items[i])
 
       // Category separator
       const cat = cmd.category || null
@@ -1670,7 +1699,7 @@ export class ContextMenu extends HTMLElement {
       if (!cmd.active) li.className += ' context-menu__item--disabled'
       li.setAttribute('part', `item${i === this._activeIndex ? ' item-active' : ''}${!cmd.active ? ' item-disabled' : ''}`)
       li.setAttribute('role', 'menuitem')
-      li.dataset.index = String(i)
+      li.dataset['index'] = String(i)
 
       const label = document.createElement('span')
       label.className = 'context-menu__item-label'
