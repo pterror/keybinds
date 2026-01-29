@@ -1137,7 +1137,7 @@ export class CommandPalette extends HTMLElement {
  *
  * Attributes:
  *   open         - Show/hide the cheatsheet
- *   auto-trigger - Enable hold-Control trigger (400ms delay)
+ *   auto-trigger - Enable hold-Control trigger (200ms delay)
  *
  * Properties:
  *   commands: Command[]     - Array of command definitions
@@ -1240,7 +1240,7 @@ export class KeybindCheatsheet extends HTMLElement {
 
     this._cleanupTrigger = onModifierHold('Control', (held) => {
       this.open = held
-    }, { delay: 400 })
+    })
   }
 
   _close() {
@@ -1369,10 +1369,10 @@ export function formatMouseParts(binding) {
  * @example
  * const cleanup = onModifierHold('Control', (held) => {
  *   cheatsheet.open = held
- * }, { delay: 400 })
+ * }, { delay: 300 })
  */
 export function onModifierHold(modifiers, callback, options = {}) {
-  const { delay = 400, target = window } = options
+  const { delay = 200, target = window } = options
   const mods = Array.isArray(modifiers) ? modifiers : [modifiers]
   const modSet = new Set(mods.map(m => m.toLowerCase()))
 

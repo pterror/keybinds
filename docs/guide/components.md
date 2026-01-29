@@ -87,7 +87,7 @@ Grouped display of available bindings.
 | Attribute | Description |
 |-----------|-------------|
 | `open` | When present, cheatsheet is visible |
-| `auto-trigger` | Enable hold-Control trigger (400ms delay) |
+| `auto-trigger` | Enable hold-Control trigger (200ms delay) |
 
 ### Events
 
@@ -115,7 +115,7 @@ import { onModifierHold } from 'keybinds'
 
 const cleanup = onModifierHold('Control', (held) => {
   cheatsheet.open = held
-}, { delay: 400 })
+}, { delay: 200 })
 
 // Later: cleanup()
 ```
@@ -124,7 +124,7 @@ const cleanup = onModifierHold('Control', (held) => {
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `delay` | `number` | `400` | Milliseconds before triggering |
+| `delay` | `number` | `200` | Milliseconds before triggering |
 | `target` | `EventTarget` | `window` | Element to listen on |
 
 ### Multiple modifiers

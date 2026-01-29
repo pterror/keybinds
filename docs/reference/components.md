@@ -85,7 +85,7 @@ Custom element: `<keybind-cheatsheet>`
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `open` | boolean | When present, cheatsheet is visible |
-| `auto-trigger` | boolean | Enable hold-Control trigger (400ms) |
+| `auto-trigger` | boolean | Enable hold-Control trigger (200ms) |
 
 ### Events
 
@@ -129,7 +129,7 @@ function onModifierHold(
 |-----------|------|---------|-------------|
 | `modifiers` | `string \| string[]` | - | Modifier key(s): `'Control'`, `'Alt'`, `'Shift'`, `'Meta'` |
 | `callback` | `(held: boolean) => void` | - | Called with `true` when held, `false` on release |
-| `options.delay` | `number` | `400` | Hold duration in ms |
+| `options.delay` | `number` | `200` | Hold duration in ms |
 | `options.target` | `EventTarget` | `window` | Element to listen on |
 
 **Returns:** Cleanup function.
@@ -143,5 +143,5 @@ const cleanup = onModifierHold('Control', (held) => {
 onModifierHold(['Control', 'Meta'], callback)
 
 // Custom delay
-onModifierHold('Alt', callback, { delay: 200 })
+onModifierHold('Alt', callback, { delay: 300 })
 ```
