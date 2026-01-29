@@ -8,12 +8,14 @@
     "./styles/palette.css": "./styles/palette.css"
   },
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "check": "tsgo --noEmit"
   },
   "files": ["src", "styles"],
   "sideEffects": ["./styles/*.css"],
   "devDependencies": {
     "@types/bun": "^1.3.7",
+    "@typescript/native-preview": "^7.0.0-dev.20260129.1",
     "happy-dom": "^20.4.0"
   }
 }
