@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'keybinds',
   description: 'Declarative, contextual keybindings for the web',
+  base: '/keybinds/',
 
   themeConfig: {
     nav: [
