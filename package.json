@@ -1,0 +1,12 @@
+{
+  "name": "keybinds",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./styles/palette.css": "./styles/palette.css"
+  },
+  "files": ["src", "styles"],
+  "sideEffects": ["./styles/*.css"]
+}
