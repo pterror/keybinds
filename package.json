@@ -7,6 +7,12 @@
     ".": "./src/index.js",
     "./styles/palette.css": "./styles/palette.css"
   },
+  "scripts": {
+    "test": "bun test"
+  },
   "files": ["src", "styles"],
-  "sideEffects": ["./styles/*.css"]
+  "sideEffects": ["./styles/*.css"],
+  "devDependencies": {
+    "happy-dom": "^20.4.0"
+  }
 }

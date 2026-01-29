@@ -1,4 +1,3 @@
 # TODO
 
-- [ ] Add automated tests
-- [ ] Add CI workflow (after tests exist)
+- [ ] Publish to npm as `@pterror/keybinds`

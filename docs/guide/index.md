@@ -4,8 +4,14 @@ keybinds is a declarative, contextual keybinding system for web applications.
 
 ## Installation
 
+Not yet published on npm. Install from source:
+
 ```bash
-npm install keybinds
+git clone https://github.com/pterror/keybinds.git
+cd keybinds
+npm link
+# Then in your project:
+npm link keybinds
 ```
 
 ## Minimal Setup
