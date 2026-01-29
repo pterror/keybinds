@@ -1530,6 +1530,7 @@ export class ContextMenu extends HTMLElement {
         :host { display: none; }
         :host([open]) { display: block; }
         * { box-sizing: border-box; }
+        .context-menu__backdrop { position: fixed; inset: 0; }
       </style>
       <div class="context-menu" part="context-menu">
         <div class="context-menu__backdrop" part="backdrop"></div>
