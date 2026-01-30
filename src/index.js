@@ -92,7 +92,8 @@ const VALID_KEYS = new Set([
 const VALID_MOUSE = new Set([
   'click', 'leftclick', 'left',
   'rightclick', 'right',
-  'middleclick', 'middle'
+  'middleclick', 'middle',
+  'scrollup', 'scrolldown', 'scrollleft', 'scrollright'
 ])
 
 /**
@@ -160,11 +161,15 @@ function parseMouse(binding) {
   let button = 0 // left
   if (btn === 'rightclick' || btn === 'right') button = 2
   else if (btn === 'middleclick' || btn === 'middle') button = 1
+  else if (btn === 'scrollup') button = 3
+  else if (btn === 'scrolldown') button = 4
+  else if (btn === 'scrollleft') button = 5
+  else if (btn === 'scrollright') button = 6
 
   return { mods, button }
 }
 
-const BUTTON_NAMES = ['click', 'middle', 'right']
+const BUTTON_NAMES = ['click', 'middle', 'right', 'scrollup', 'scrolldown', 'scrollleft', 'scrollright']
 
 /**
  * Normalize modifiers to canonical prefix (e.g., "ctrl+alt+")
@@ -233,6 +238,30 @@ function eventToMouseLookup(event) {
     meta: event.metaKey
   })
   return `${prefix}${BUTTON_NAMES[event.button] || 'click'}`
+}
+
+/**
+ * Convert a WheelEvent to a lookup key (e.g. "ctrl+scrollup")
+ * Returns null if both deltas are zero.
+ * @param {WheelEvent} event
+ * @returns {string | null}
+ */
+function eventToWheelLookup(event) {
+  let direction
+  // Prefer vertical axis; fall back to horizontal
+  if (event.deltaY < 0) direction = 'scrollup'
+  else if (event.deltaY > 0) direction = 'scrolldown'
+  else if (event.deltaX < 0) direction = 'scrollleft'
+  else if (event.deltaX > 0) direction = 'scrollright'
+  else return null
+
+  const prefix = modsToPrefix({
+    ctrl: event.ctrlKey,
+    alt: event.altKey,
+    shift: event.shiftKey,
+    meta: event.metaKey
+  })
+  return `${prefix}${direction}`
 }
 
 /**
@@ -396,13 +425,50 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     }
   }
 
+  // Cooldown-based wheel dispatch: fires immediately, then suppresses for 100ms
+  /** @type {Map<string, number>} */
+  const wheelCooldowns = new Map()
+  const WHEEL_COOLDOWN_MS = 100
+
+  /** @param {Event} e */
+  function handleWheel(e) {
+    const event = /** @type {WheelEvent} */ (e)
+
+    // Don't fire keybinds while the command palette or settings panel is open
+    const tgt = /** @type {Element | null} */ (event.target)
+    if (tgt?.matches?.('command-palette[open]')) return
+    if (tgt?.matches?.('keybind-settings[open]')) return
+
+    const lookupKey = eventToWheelLookup(event)
+    if (!lookupKey) return
+
+    const candidates = lookup.mouse.get(lookupKey)
+    if (!candidates) return
+
+    // Cooldown check
+    const now = performance.now()
+    const lastFire = wheelCooldowns.get(lookupKey)
+    if (lastFire !== undefined && now - lastFire < WHEEL_COOLDOWN_MS) return
+
+    const context = getContext()
+    for (const cmd of candidates) {
+      if (!isActive(cmd, context)) continue
+      if (tryExecute(cmd, context, event)) {
+        wheelCooldowns.set(lookupKey, now)
+        return
+      }
+    }
+  }
+
   target.addEventListener('keydown', handleKeyDown)
   target.addEventListener('mousedown', handleMouseDown)
+  target.addEventListener('wheel', handleWheel, { passive: false })
 
   // Return cleanup function
   return () => {
     target.removeEventListener('keydown', handleKeyDown)
     target.removeEventListener('mousedown', handleMouseDown)
+    target.removeEventListener('wheel', handleWheel)
   }
 }
 
@@ -884,14 +950,26 @@ export function eventToBindingString(event) {
 }
 
 /**
- * Convert a MouseEvent to a canonical binding string (e.g. "$mod+click")
+ * Convert a MouseEvent or WheelEvent to a canonical binding string (e.g. "$mod+click", "$mod+scrollup")
  *
  * @param {MouseEvent} event
  * @returns {string | null}
  */
 export function eventToMouseBindingString(event) {
-  const buttonName = BUTTON_NAMES[event.button]
-  if (!buttonName) return null
+  let buttonName
+
+  // WheelEvent: derive direction from deltas
+  if ('deltaY' in event && 'deltaX' in event) {
+    const we = /** @type {WheelEvent} */ (event)
+    if (we.deltaY < 0) buttonName = 'scrollup'
+    else if (we.deltaY > 0) buttonName = 'scrolldown'
+    else if (we.deltaX < 0) buttonName = 'scrollleft'
+    else if (we.deltaX > 0) buttonName = 'scrollright'
+    else return null
+  } else {
+    buttonName = BUTTON_NAMES[event.button]
+    if (!buttonName) return null
+  }
 
   const parts = []
   const hasPlatformMod = isMac ? event.metaKey : event.ctrlKey
@@ -1488,6 +1566,10 @@ function formatMousePart(part) {
   if (p === 'click' || p === 'leftclick' || p === 'left') return 'Click'
   if (p === 'middleclick' || p === 'middle') return 'Middle'
   if (p === 'rightclick' || p === 'right') return 'Right'
+  if (p === 'scrollup') return 'Scroll \u2191'
+  if (p === 'scrolldown') return 'Scroll \u2193'
+  if (p === 'scrollleft') return 'Scroll \u2190'
+  if (p === 'scrollright') return 'Scroll \u2192'
   return part
 }
 
@@ -1635,6 +1717,8 @@ export class KeybindSettings extends HTMLElement {
     this._recordKeyHandler = null
     /** @type {((e: Event) => void) | null} */
     this._recordMouseHandler = null
+    /** @type {((e: Event) => void) | null} */
+    this._recordWheelHandler = null
 
     const shadow = this.attachShadow({ mode: 'open' })
     shadow.innerHTML = `
@@ -1800,11 +1884,26 @@ export class KeybindSettings extends HTMLElement {
       this._handleRecordedBinding(bindingStr)
     }
 
+    /** @param {Event} e */
+    const wheelHandler = (e) => {
+      if (this._recording?.type !== 'mouse') return
+
+      const event = /** @type {WheelEvent} */ (e)
+      const bindingStr = eventToMouseBindingString(event)
+      if (!bindingStr) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      this._handleRecordedBinding(bindingStr)
+    }
+
     this._recordKeyHandler = keyHandler
     this._recordMouseHandler = mouseHandler
+    this._recordWheelHandler = wheelHandler
 
     window.addEventListener('keydown', keyHandler, true)
     window.addEventListener('mousedown', mouseHandler, true)
+    window.addEventListener('wheel', wheelHandler, { capture: true })
 
     this._render()
   }
@@ -1817,6 +1916,10 @@ export class KeybindSettings extends HTMLElement {
     if (this._recordMouseHandler) {
       window.removeEventListener('mousedown', this._recordMouseHandler, true)
       this._recordMouseHandler = null
+    }
+    if (this._recordWheelHandler) {
+      window.removeEventListener('wheel', this._recordWheelHandler, true)
+      this._recordWheelHandler = null
     }
     this._recording = null
     this._conflict = null
@@ -2012,7 +2115,7 @@ export class KeybindSettings extends HTMLElement {
           const recordingText = document.createElement('span')
           recordingText.className = 'settings__recording-overlay'
           recordingText.setAttribute('part', 'recording-overlay')
-          recordingText.textContent = this._recording?.type === 'keys' ? 'Press a key...' : 'Click...'
+          recordingText.textContent = this._recording?.type === 'keys' ? 'Press a key...' : 'Click or scroll...'
           overlay.appendChild(recordingText)
           bindingsEl.appendChild(overlay)
 
@@ -2081,7 +2184,7 @@ export class KeybindSettings extends HTMLElement {
       const overlay = document.createElement('span')
       overlay.className = 'settings__recording-overlay'
       overlay.setAttribute('part', 'recording-overlay')
-      overlay.textContent = type === 'keys' ? 'Press a key...' : 'Click...'
+      overlay.textContent = type === 'keys' ? 'Press a key...' : 'Click or scroll...'
       wrapper.appendChild(overlay)
 
       if (this._conflict) {
