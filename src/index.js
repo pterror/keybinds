@@ -1084,6 +1084,8 @@ export class CommandPalette extends HTMLElement {
     this._matcher = undefined
     /** @type {ScoredCommand[]} */
     this._results = []
+    /** @type {HTMLLIElement[]} */
+    this._items = []
     /** @type {number} */
     this._activeIndex = 0
     /** @type {'keyboard' | 'pointer'} */
@@ -1242,6 +1244,8 @@ export class CommandPalette extends HTMLElement {
   }
 
   _render() {
+    /** @type {HTMLLIElement[]} */
+    this._items = []
     this._list.replaceChildren()
     if (this._results.length === 0) {
       const empty = document.createElement('li')
@@ -1254,12 +1258,8 @@ export class CommandPalette extends HTMLElement {
 
     this._results.forEach((cmd, i) => {
       const li = document.createElement('li')
-      li.className = 'palette__item'
-      if (i === this._activeIndex) li.className += ' palette__item--active'
-      if (!cmd.active) li.className += ' palette__item--disabled'
-      li.setAttribute('part', `item${i === this._activeIndex ? ' item-active' : ''}${!cmd.active ? ' item-disabled' : ''}`)
+      li.className = 'palette__item' + (!cmd.active ? ' palette__item--disabled' : '')
       li.setAttribute('role', 'option')
-      li.setAttribute('aria-selected', i === this._activeIndex ? 'true' : 'false')
       li.dataset['index'] = String(i)
 
       const label = document.createElement('span')
@@ -1267,7 +1267,6 @@ export class CommandPalette extends HTMLElement {
       label.setAttribute('part', 'item-label')
 
       if (cmd.positions && cmd.positions.length > 0) {
-        // Render with highlights
         const posSet = new Set(cmd.positions)
         for (let j = 0; j < cmd.label.length; j++) {
           const ch = /** @type {string} */ (cmd.label[j])
@@ -1320,12 +1319,31 @@ export class CommandPalette extends HTMLElement {
       li.addEventListener('click', () => this._execute(i))
       li.addEventListener('mouseenter', () => {
         if (this._inputMode !== 'pointer') return
-        this._activeIndex = i
-        this._render()
+        this._setActive(i)
       })
 
+      this._items.push(li)
       this._list.appendChild(li)
     })
+
+    this._setActive(this._activeIndex)
+  }
+
+  /** @param {number} index */
+  _setActive(index) {
+    const prev = this._items[this._activeIndex]
+    const next = this._items[index]
+    if (prev) {
+      prev.classList.remove('palette__item--active')
+      prev.setAttribute('part', `item${prev.classList.contains('palette__item--disabled') ? ' item-disabled' : ''}`)
+      prev.setAttribute('aria-selected', 'false')
+    }
+    if (next) {
+      next.classList.add('palette__item--active')
+      next.setAttribute('part', `item item-active${next.classList.contains('palette__item--disabled') ? ' item-disabled' : ''}`)
+      next.setAttribute('aria-selected', 'true')
+    }
+    this._activeIndex = index
   }
 
   /** @param {KeyboardEvent} e */
@@ -1334,31 +1352,27 @@ export class CommandPalette extends HTMLElement {
       case 'ArrowDown':
         e.preventDefault()
         this._inputMode = 'keyboard'
-        this._activeIndex = this._activeIndex < this._results.length - 1
-          ? this._activeIndex + 1 : 0
-        this._render()
+        this._setActive(this._activeIndex < this._results.length - 1
+          ? this._activeIndex + 1 : 0)
         this._scrollToActive()
         break
       case 'ArrowUp':
         e.preventDefault()
         this._inputMode = 'keyboard'
-        this._activeIndex = this._activeIndex > 0
-          ? this._activeIndex - 1 : this._results.length - 1
-        this._render()
+        this._setActive(this._activeIndex > 0
+          ? this._activeIndex - 1 : this._results.length - 1)
         this._scrollToActive()
         break
       case 'Home':
         e.preventDefault()
         this._inputMode = 'keyboard'
-        this._activeIndex = 0
-        this._render()
+        this._setActive(0)
         this._scrollToActive()
         break
       case 'End':
         e.preventDefault()
         this._inputMode = 'keyboard'
-        this._activeIndex = this._results.length - 1
-        this._render()
+        this._setActive(this._results.length - 1)
         this._scrollToActive()
         break
       case 'Enter':
@@ -1373,8 +1387,8 @@ export class CommandPalette extends HTMLElement {
   }
 
   _scrollToActive() {
-    const active = this._list.querySelector('.palette__item--active')
-    if (active) active.scrollIntoView({ block: 'nearest' })
+    const el = this._items[this._activeIndex]
+    if (el) el.scrollIntoView({ block: 'nearest' })
   }
 
   /** @param {number} index */
