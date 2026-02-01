@@ -3,15 +3,20 @@
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./src/index.js",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.js"
+    },
     "./styles/palette.css": "./styles/palette.css"
   },
   "scripts": {
     "test": "bun test",
-    "check": "tsgo --noEmit"
+    "check": "tsgo --noEmit",
+    "build:types": "tsgo --declaration --emitDeclarationOnly --outDir dist --rootDir src && rm -f dist/index.test.d.ts"
   },
-  "files": ["src", "styles"],
+  "files": ["src", "styles", "dist"],
   "sideEffects": ["./styles/*.css"],
   "devDependencies": {
     "@types/bun": "^1.3.7",
