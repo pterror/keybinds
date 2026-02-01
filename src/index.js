@@ -1257,7 +1257,6 @@ export class CommandPalette extends HTMLElement {
   _render() {
     if (this._results.length === 0) {
       for (const item of this._items) item.remove()
-      this._items.length = 0
       if (!this._emptyEl) {
         this._emptyEl = document.createElement('li')
         this._emptyEl.className = 'palette__empty'
@@ -1275,14 +1274,14 @@ export class CommandPalette extends HTMLElement {
       if (!li) {
         li = document.createElement('li')
         li.setAttribute('role', 'option')
-        this._items.push(li)
-        this._list.appendChild(li)
+        this._items[i] = li
       }
+      if (!li.parentNode) this._list.appendChild(li)
       this._updateItem(li, this._results[i], i)
     }
 
-    while (this._items.length > this._results.length) {
-      /** @type {HTMLLIElement} */ (this._items.pop()).remove()
+    for (let i = this._results.length; i < this._items.length; i++) {
+      this._items[i].remove()
     }
 
     this._setActive(this._activeIndex)
