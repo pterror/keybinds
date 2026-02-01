@@ -64,9 +64,14 @@ Custom element: `<command-palette>`
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Navigate results |
+| `↑` / `↓` | Navigate results (wraps around) |
+| `Home` / `End` | Jump to first / last result |
 | `Enter` | Execute selected |
 | `Escape` | Close palette |
+
+Keyboard and pointer input are tracked separately — moving the mouse
+won't hijack an in-progress keyboard selection until the pointer
+deliberately moves again.
 
 ---
 
@@ -225,9 +230,14 @@ Custom element: `<context-menu>`
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Navigate items |
+| `↑` / `↓` | Navigate items (wraps around) |
+| `Home` / `End` | Jump to first / last item |
 | `Enter` | Execute selected |
 | `Escape` | Close menu |
+
+Keyboard and pointer input are tracked separately — moving the mouse
+won't hijack an in-progress keyboard selection until the pointer
+deliberately moves again.
 
 ---
 

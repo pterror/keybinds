@@ -268,7 +268,7 @@ menu.open = true
 - Inactive commands (failing `when`) are shown but disabled
 - Hidden commands are excluded
 - The menu auto-clamps to viewport edges
-- Keyboard navigation with Arrow keys, Enter to execute, Escape to close
+- Keyboard navigation with Arrow keys (wrap-around), Home/End, Enter to execute, Escape to close
 - Clicking the backdrop or right-clicking outside closes the menu
 
 ## onModifierHold Utility
