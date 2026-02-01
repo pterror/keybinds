@@ -1294,6 +1294,8 @@ export class CommandPalette extends HTMLElement {
    */
   _updateItem(li, cmd, index) {
     li.className = 'palette__item' + (!cmd.active ? ' palette__item--disabled' : '')
+    li.setAttribute('part', `item${!cmd.active ? ' item-disabled' : ''}`)
+    li.setAttribute('aria-selected', 'false')
     li.dataset['index'] = String(index)
     li.replaceChildren()
 
