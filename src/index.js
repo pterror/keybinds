@@ -1225,8 +1225,9 @@ export class CommandPalette extends HTMLElement {
     this._results = query
       ? searchCommands(this._commands, query, this._context, { matcher: this._matcher })
       : this._getAllVisible()
-    this._activeIndex = Math.min(this._activeIndex, Math.max(0, this._results.length - 1))
+    this._activeIndex = 0
     this._render()
+    this._list.scrollTop = 0
   }
 
   _getAllVisible() {
@@ -1241,7 +1242,7 @@ export class CommandPalette extends HTMLElement {
   }
 
   _render() {
-    this._list.innerHTML = ''
+    this._list.replaceChildren()
     if (this._results.length === 0) {
       const empty = document.createElement('li')
       empty.className = 'palette__empty'
@@ -1512,7 +1513,7 @@ export class KeybindCheatsheet extends HTMLElement {
 
   _render() {
     const groups = groupByCategory(this._commands, this._context)
-    this._dialog.innerHTML = ''
+    this._dialog.replaceChildren()
 
     for (const [category, cmds] of Object.entries(groups)) {
       const group = document.createElement('div')
@@ -2057,13 +2058,13 @@ export class KeybindSettings extends HTMLElement {
 
   _render() {
     if (!this._store) {
-      this._dialog.innerHTML = ''
+      this._dialog.replaceChildren()
       return
     }
 
     const schema = this._store.schema
     const merged = this._store.get()
-    this._dialog.innerHTML = ''
+    this._dialog.replaceChildren()
 
     // Header
     const header = document.createElement('div')
@@ -2523,7 +2524,7 @@ export class ContextMenu extends HTMLElement {
   }
 
   _render() {
-    this._list.innerHTML = ''
+    this._list.replaceChildren()
     this._list.setAttribute('tabindex', '0')
 
     let lastCategory = null
