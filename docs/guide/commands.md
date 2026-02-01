@@ -8,6 +8,7 @@ Commands are the core unit of keybinds. Each command is an object describing wha
 interface Command {
   id: string           // Unique identifier
   label: string        // Display name (for palette/cheatsheet)
+  description?: string // Extended description (shown in palette)
   category?: string    // Group for organization
   keys?: string[]      // Keyboard triggers
   mouse?: string[]     // Mouse triggers

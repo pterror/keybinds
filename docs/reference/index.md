@@ -235,6 +235,7 @@ if (conflict) {
 interface Command {
   id: string
   label: string
+  description?: string
   category?: string
   keys?: string[]
   mouse?: string[]
@@ -252,6 +253,7 @@ interface ScoredCommand extends Command {
 
 interface BindingSchema {
   label: string
+  description?: string
   category?: string
   keys?: string[]
   mouse?: string[]

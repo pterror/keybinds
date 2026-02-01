@@ -1040,6 +1040,7 @@ export function findConflict(schema, bindingStr, type, excludeId) {
  * Attributes:
  *   open         - Show/hide the palette
  *   auto-trigger - Enable default $mod+K trigger
+ *   placeholder  - Input placeholder text (default: "Type a command...")
  *
  * Properties:
  *   commands: Command[]     - Array of command definitions
@@ -1062,6 +1063,7 @@ export function findConflict(schema, bindingStr, type, excludeId) {
  *   .palette__item--disabled
  *   .palette__item-label
  *   .palette__item-label-match (highlight)
+ *   .palette__item-description
  *   .palette__item-category
  *   .palette__item-keys
  *   .palette__item-key
@@ -1069,7 +1071,7 @@ export function findConflict(schema, bindingStr, type, excludeId) {
  */
 export class CommandPalette extends HTMLElement {
   static get observedAttributes() {
-    return ['open', 'auto-trigger']
+    return ['open', 'auto-trigger', 'placeholder']
   }
 
   constructor() {
@@ -1157,12 +1159,17 @@ export class CommandPalette extends HTMLElement {
       else this._onClose()
     } else if (name === 'auto-trigger') {
       this._setupAutoTrigger(newVal !== null)
+    } else if (name === 'placeholder') {
+      this._input.placeholder = newVal || 'Type a command...'
     }
   }
 
   connectedCallback() {
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
+    }
+    if (this.hasAttribute('placeholder')) {
+      this._input.placeholder = this.getAttribute('placeholder') || 'Type a command...'
     }
   }
 

@@ -33,6 +33,7 @@ Custom element: `<command-palette>`
 |-----------|------|-------------|
 | `open` | boolean | When present, palette is visible |
 | `auto-trigger` | boolean | Enable `$mod+K` keyboard trigger |
+| `placeholder` | string | Input placeholder text (default: "Type a command...") |
 
 ### Events
 
@@ -54,6 +55,7 @@ Custom element: `<command-palette>`
 | `item-active` | Selected result |
 | `item-disabled` | Inactive result |
 | `item-label` | Label span |
+| `item-description` | Description span |
 | `item-category` | Category span |
 | `item-key` | Shortcut kbd |
 | `empty` | No results message |

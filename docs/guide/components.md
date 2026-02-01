@@ -46,6 +46,7 @@ Search and execute commands by name.
 |-----------|-------------|
 | `open` | When present, palette is visible |
 | `auto-trigger` | Enable default `$mod+K` trigger |
+| `placeholder` | Input placeholder text (default: "Type a command...") |
 
 ### Events
 
