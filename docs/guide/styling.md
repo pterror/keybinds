@@ -93,6 +93,21 @@ command-palette::part(item-active) {
 | `conflict-accept` | Replace button |
 | `conflict-cancel` | Cancel button |
 
+## Context Menu Parts
+
+| Part | Description |
+|------|-------------|
+| `context-menu` | Root container |
+| `backdrop` | Overlay behind menu (covers viewport) |
+| `list` | Menu list (`<ul>`) |
+| `item` | Individual menu item (`<li>`) |
+| `item-active` | Currently highlighted item |
+| `item-disabled` | Inactive command (failing `when`) |
+| `separator` | Category separator between groups |
+| `item-label` | Command label text |
+| `item-keys` | Container for shortcut keys |
+| `item-key` | Individual key (`<kbd>`) |
+
 ## BEM Classes
 
 Inside shadow DOM, elements have BEM class names matching their parts:

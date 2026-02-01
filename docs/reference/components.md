@@ -174,6 +174,61 @@ Custom element: `<keybind-settings>`
 
 ---
 
+## ContextMenu
+
+Custom element: `<context-menu>`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `commands` | `Command[]` | Commands to display and execute |
+| `context` | `object` | Context for `when` evaluation |
+| `menu` | `string` | Filter to commands with matching `menu` tag |
+| `position` | `{ x: number, y: number }` | Menu position in viewport coordinates |
+| `open` | `boolean` | Visibility state |
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `open` | boolean | When present, menu is visible |
+| `auto-trigger` | boolean | Listen for `contextmenu` on parent or `target` element |
+| `menu` | string | Filter commands by menu tag |
+| `target` | string | CSS selector for trigger element (defaults to parent) |
+
+### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `execute` | `{ command: Command }` | Command was executed |
+| `close` | - | Menu was dismissed |
+
+### CSS Parts
+
+| Part | Element |
+|------|---------|
+| `context-menu` | Root div |
+| `backdrop` | Overlay div |
+| `list` | Menu ul |
+| `item` | Menu item li |
+| `item-active` | Highlighted item |
+| `item-disabled` | Inactive item |
+| `separator` | Category separator |
+| `item-label` | Label span |
+| `item-keys` | Keys container span |
+| `item-key` | Individual kbd |
+
+### Keyboard Navigation
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate items |
+| `Enter` | Execute selected |
+| `Escape` | Close menu |
+
+---
+
 ## eventToBindingString(event)
 
 Convert a KeyboardEvent to a canonical binding string.
@@ -212,6 +267,42 @@ function findConflict(
 ```
 
 Normalizes through parse → lookup for accurate cross-format comparison.
+
+---
+
+## formatMouseParts(binding)
+
+Format a mouse/scroll binding string into an array of display-ready parts.
+
+```ts
+function formatMouseParts(binding: string): string[]
+```
+
+```js
+formatMouseParts('$mod+click')      // ["⌘", "Click"] on Mac, ["Ctrl", "Click"] elsewhere
+formatMouseParts('scrollup')        // ["Scroll ↑"]
+formatMouseParts('ctrl+scrolldown') // ["Ctrl", "Scroll ↓"] on Mac, ["Ctrl", "Scroll ↓"] elsewhere
+```
+
+---
+
+## filterByMenu(commands, menu, context?)
+
+Filter commands by their `menu` tag for context menu display.
+
+```ts
+function filterByMenu(
+  commands: Command[],
+  menu: string,
+  context?: Record<string, unknown>
+): (Command & { active: boolean })[]
+```
+
+Returns commands whose `menu` property matches (string match or array includes). Each result includes an `active` boolean from `when` evaluation. Hidden commands are excluded.
+
+```js
+const items = filterByMenu(commands, 'editor', { hasSelection: true })
+```
 
 ---
 

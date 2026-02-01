@@ -15,6 +15,7 @@ interface Command {
   execute: (ctx) => any // Action to perform
   hidden?: bool        // Hide from search
   captureInput?: bool  // Fire even in input fields
+  menu?: string | string[]  // Context menu tag(s)
 }
 ```
 
@@ -40,6 +41,44 @@ mouse: ['$mod+Click']   // Cmd/Ctrl + left click
 mouse: ['MiddleClick']  // Middle mouse button
 mouse: ['RightClick']   // Right click (context menu)
 ```
+
+## Scroll/Wheel Bindings
+
+Scroll triggers use the `mouse` array with scroll direction names:
+
+```js
+mouse: ['$mod+scrollup']    // Cmd/Ctrl + scroll up (e.g. zoom in)
+mouse: ['$mod+scrolldown']  // Cmd/Ctrl + scroll down (e.g. zoom out)
+mouse: ['scrollleft']       // Horizontal scroll left
+mouse: ['scrollright']      // Horizontal scroll right
+```
+
+**Directions:** `scrollup`, `scrolldown`, `scrollleft`, `scrollright`
+
+Scroll bindings use cooldown-based dispatch (100ms) to fire once per gesture rather than once per pixel.
+
+## Context Menu Tags
+
+The `menu` property tags commands for use with `<context-menu>`:
+
+```js
+{
+  id: 'copy',
+  label: 'Copy',
+  keys: ['$mod+c'],
+  menu: 'editor',               // Show in the 'editor' context menu
+  execute: () => copy(),
+}
+
+{
+  id: 'rename',
+  label: 'Rename',
+  menu: ['sidebar', 'editor'],  // Show in multiple context menus
+  execute: () => rename(),
+}
+```
+
+See [Components > Context Menu](./components.md#context-menu) for rendering these with `<context-menu>`.
 
 ## Execution
 

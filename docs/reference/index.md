@@ -191,7 +191,7 @@ const binding = eventToBindingString(event)  // e.g. "$mod+shift+k"
 
 ## eventToMouseBindingString(event)
 
-Convert a MouseEvent to a canonical binding string.
+Convert a MouseEvent or WheelEvent to a canonical binding string.
 
 ```ts
 function eventToMouseBindingString(event: MouseEvent): string | null
@@ -200,6 +200,9 @@ function eventToMouseBindingString(event: MouseEvent): string | null
 ```js
 // In a mousedown handler:
 const binding = eventToMouseBindingString(event)  // e.g. "$mod+click"
+
+// Also works with WheelEvent:
+const scroll = eventToMouseBindingString(wheelEvent)  // e.g. "$mod+scrollup"
 ```
 
 ---
@@ -239,6 +242,7 @@ interface Command {
   execute: (ctx: Record<string, unknown>, event?: Event) => unknown
   hidden?: boolean
   captureInput?: boolean
+  menu?: string | string[]
 }
 
 interface ScoredCommand extends Command {

@@ -1,10 +1,11 @@
 # Components
 
-keybinds provides three web components for discoverability and customization:
+keybinds provides four web components for discoverability and customization:
 
 - **`<command-palette>`** - Search-driven command execution (like VS Code's Ctrl+Shift+P)
 - **`<keybind-cheatsheet>`** - Glanceable reference (like ChatGPT's hold-Ctrl overlay)
 - **`<keybind-settings>`** - Rebindable keyboard shortcuts panel
+- **`<context-menu>`** - Right-click context menus driven by commands
 
 ## Setup
 
@@ -20,6 +21,7 @@ Then use in HTML:
 <command-palette></command-palette>
 <keybind-cheatsheet></keybind-cheatsheet>
 <keybind-settings></keybind-settings>
+<context-menu></context-menu>
 ```
 
 ## Command Palette
@@ -170,6 +172,103 @@ settings.addEventListener('change', (e) => {
 - Conflicts are detected and shown inline with Replace/Cancel options
 - Per-command and global reset buttons
 - Escape cancels recording or closes the panel
+
+## Context Menu
+
+Right-click context menus populated from your commands.
+
+```html
+<context-menu auto-trigger></context-menu>
+```
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `commands` | `Command[]` | Array of command definitions |
+| `context` | `object` | Context for `when` checks |
+| `menu` | `string` | Filter commands by `menu` tag |
+| `position` | `{ x: number, y: number }` | Menu position in viewport coordinates |
+| `open` | `boolean` | Show/hide the menu |
+
+### Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `open` | When present, menu is visible |
+| `auto-trigger` | Listen for `contextmenu` events on the parent (or `target`) |
+| `menu` | Filter commands to those with a matching `menu` tag |
+| `target` | CSS selector for the element to listen on (defaults to parent element) |
+
+### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `execute` | `{ command }` | Fired when a command is executed |
+| `close` | - | Fired when the menu is dismissed |
+
+### Usage
+
+Commands opt into context menus via the `menu` property:
+
+```js
+const commands = [
+  {
+    id: 'cut',
+    label: 'Cut',
+    category: 'Edit',
+    keys: ['$mod+x'],
+    menu: 'editor',
+    execute: () => cut(),
+  },
+  {
+    id: 'paste',
+    label: 'Paste',
+    category: 'Edit',
+    keys: ['$mod+v'],
+    menu: ['editor', 'sidebar'],  // Appears in multiple menus
+    execute: () => paste(),
+  },
+]
+```
+
+Basic right-click menu on the parent element:
+
+```html
+<div class="editor">
+  <context-menu auto-trigger></context-menu>
+</div>
+```
+
+```js
+const menu = document.querySelector('context-menu')
+menu.commands = commands
+menu.menu = 'editor'  // Only show commands tagged with 'editor'
+```
+
+Target a specific element instead of the parent:
+
+```html
+<context-menu auto-trigger target="#canvas" menu="canvas"></context-menu>
+```
+
+Manual positioning:
+
+```js
+const menu = document.querySelector('context-menu')
+menu.commands = commands
+menu.position = { x: event.clientX, y: event.clientY }
+menu.open = true
+```
+
+### Behavior
+
+- Items are grouped by category with separators between groups
+- Inactive commands (failing `when`) are shown but disabled
+- Hidden commands are excluded
+- The menu auto-clamps to viewport edges
+- Keyboard navigation with Arrow keys, Enter to execute, Escape to close
+- Clicking the backdrop or right-clicking outside closes the menu
 
 ## onModifierHold Utility
 
