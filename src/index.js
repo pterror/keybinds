@@ -1127,6 +1127,17 @@ export class CommandPalette extends HTMLElement {
     this._input.addEventListener('input', () => this._search())
     this._input.addEventListener('keydown', (e) => this._handleKey(e))
     this._list.addEventListener('mousemove', () => { this._inputMode = 'pointer' })
+    this._list.addEventListener('click', (e) => {
+      const li = /** @type {HTMLElement} */ (e.target).closest('.palette__item')
+      if (li) this._execute(Number(li.dataset['index']))
+    })
+    this._list.addEventListener('mouseover', (e) => {
+      if (this._inputMode !== 'pointer') return
+      const li = /** @type {HTMLElement} */ (e.target).closest('.palette__item')
+      if (!li) return
+      const index = Number(li.dataset['index'])
+      if (index !== this._activeIndex) this._setActive(index)
+    })
   }
 
   get commands() { return this._commands }
@@ -1244,89 +1255,102 @@ export class CommandPalette extends HTMLElement {
   }
 
   _render() {
-    /** @type {HTMLLIElement[]} */
-    this._items = []
-    this._list.replaceChildren()
     if (this._results.length === 0) {
-      const empty = document.createElement('li')
-      empty.className = 'palette__empty'
-      empty.setAttribute('part', 'empty')
-      empty.textContent = 'No commands found'
-      this._list.appendChild(empty)
+      for (const item of this._items) item.remove()
+      this._items.length = 0
+      if (!this._emptyEl) {
+        this._emptyEl = document.createElement('li')
+        this._emptyEl.className = 'palette__empty'
+        this._emptyEl.setAttribute('part', 'empty')
+        this._emptyEl.textContent = 'No commands found'
+      }
+      if (!this._emptyEl.parentNode) this._list.appendChild(this._emptyEl)
       return
     }
 
-    this._results.forEach((cmd, i) => {
-      const li = document.createElement('li')
-      li.className = 'palette__item' + (!cmd.active ? ' palette__item--disabled' : '')
-      li.setAttribute('role', 'option')
-      li.dataset['index'] = String(i)
+    if (this._emptyEl && this._emptyEl.parentNode) this._emptyEl.remove()
 
-      const label = document.createElement('span')
-      label.className = 'palette__item-label'
-      label.setAttribute('part', 'item-label')
-
-      if (cmd.positions && cmd.positions.length > 0) {
-        const posSet = new Set(cmd.positions)
-        for (let j = 0; j < cmd.label.length; j++) {
-          const ch = /** @type {string} */ (cmd.label[j])
-          if (posSet.has(j)) {
-            const mark = document.createElement('mark')
-            mark.className = 'palette__item-label-match'
-            mark.setAttribute('part', 'item-label-match')
-            mark.textContent = ch
-            label.appendChild(mark)
-          } else {
-            label.appendChild(document.createTextNode(ch))
-          }
-        }
-      } else {
-        label.textContent = cmd.label
+    for (let i = 0; i < this._results.length; i++) {
+      let li = this._items[i]
+      if (!li) {
+        li = document.createElement('li')
+        li.setAttribute('role', 'option')
+        this._items.push(li)
+        this._list.appendChild(li)
       }
+      this._updateItem(li, this._results[i], i)
+    }
 
-      li.appendChild(label)
-
-      if (cmd.description) {
-        const desc = document.createElement('span')
-        desc.className = 'palette__item-description'
-        desc.setAttribute('part', 'item-description')
-        desc.textContent = cmd.description
-        li.appendChild(desc)
-      }
-
-      if (cmd.category) {
-        const cat = document.createElement('span')
-        cat.className = 'palette__item-category'
-        cat.setAttribute('part', 'item-category')
-        cat.textContent = cmd.category
-        li.appendChild(cat)
-      }
-
-      if (cmd.keys && cmd.keys[0]) {
-        const keyContainer = document.createElement('span')
-        keyContainer.className = 'palette__item-keys'
-        keyContainer.setAttribute('part', 'item-keys')
-        for (const part of formatKeyParts(cmd.keys[0])) {
-          const kbd = document.createElement('kbd')
-          kbd.className = 'palette__item-key'
-          kbd.setAttribute('part', 'item-key')
-          kbd.textContent = part
-          keyContainer.appendChild(kbd)
-        }
-        li.appendChild(keyContainer)
-      }
-
-      li.addEventListener('click', () => this._execute(i))
-      li.addEventListener('mouseenter', () => {
-        if (this._inputMode !== 'pointer') return
-        this._setActive(i)
-      })
-
-      this._items.push(li)
-      this._list.appendChild(li)
-    })
+    while (this._items.length > this._results.length) {
+      /** @type {HTMLLIElement} */ (this._items.pop()).remove()
+    }
 
     this._setActive(this._activeIndex)
+  }
+
+  /**
+   * @param {HTMLLIElement} li
+   * @param {ScoredCommand} cmd
+   * @param {number} index
+   */
+  _updateItem(li, cmd, index) {
+    li.className = 'palette__item' + (!cmd.active ? ' palette__item--disabled' : '')
+    li.dataset['index'] = String(index)
+    li.replaceChildren()
+
+    const label = document.createElement('span')
+    label.className = 'palette__item-label'
+    label.setAttribute('part', 'item-label')
+
+    if (cmd.positions && cmd.positions.length > 0) {
+      const posSet = new Set(cmd.positions)
+      for (let j = 0; j < cmd.label.length; j++) {
+        const ch = /** @type {string} */ (cmd.label[j])
+        if (posSet.has(j)) {
+          const mark = document.createElement('mark')
+          mark.className = 'palette__item-label-match'
+          mark.setAttribute('part', 'item-label-match')
+          mark.textContent = ch
+          label.appendChild(mark)
+        } else {
+          label.appendChild(document.createTextNode(ch))
+        }
+      }
+    } else {
+      label.textContent = cmd.label
+    }
+
+    li.appendChild(label)
+
+    if (cmd.description) {
+      const desc = document.createElement('span')
+      desc.className = 'palette__item-description'
+      desc.setAttribute('part', 'item-description')
+      desc.textContent = cmd.description
+      li.appendChild(desc)
+    }
+
+    if (cmd.category) {
+      const cat = document.createElement('span')
+      cat.className = 'palette__item-category'
+      cat.setAttribute('part', 'item-category')
+      cat.textContent = cmd.category
+      li.appendChild(cat)
+    }
+
+    if (cmd.keys && cmd.keys[0]) {
+      const keyContainer = document.createElement('span')
+      keyContainer.className = 'palette__item-keys'
+      keyContainer.setAttribute('part', 'item-keys')
+      for (const part of formatKeyParts(cmd.keys[0])) {
+        const kbd = document.createElement('kbd')
+        kbd.className = 'palette__item-key'
+        kbd.setAttribute('part', 'item-key')
+        kbd.textContent = part
+        keyContainer.appendChild(kbd)
+      }
+      li.appendChild(keyContainer)
+    }
   }
 
   /** @param {number} index */
