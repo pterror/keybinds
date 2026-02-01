@@ -29,6 +29,7 @@
  * @typedef {Object} Command
  * @property {string} id - Unique identifier
  * @property {string} label - Display name
+ * @property {string | undefined} [description] - Extended description for palette
  * @property {string | undefined} [category] - Group for command palette
  * @property {string[] | undefined} [keys] - Keyboard triggers
  * @property {string[] | undefined} [mouse] - Mouse triggers
@@ -506,6 +507,7 @@ export function matchCommands(commands, query, context, matcher) {
 
     const match = matcher(query, cmd.label)
       ?? matcher(query, cmd.id)
+      ?? (cmd.description ? matcher(query, cmd.description) : null)
       ?? (cmd.category ? matcher(query, cmd.category) : null)
 
     if (!match) continue
@@ -674,6 +676,7 @@ export function formatKeyParts(key) {
 /**
  * @typedef {Object} BindingSchema
  * @property {string} label - Display name
+ * @property {string | undefined} [description] - Extended description for palette
  * @property {string | undefined} [category] - Group for command palette
  * @property {string[] | undefined} [keys] - Default keyboard triggers
  * @property {string[] | undefined} [mouse] - Default mouse triggers
@@ -740,6 +743,7 @@ export function fromBindings(bindings, handlers, options = {}) {
     commands.push({
       id,
       label: binding.label,
+      description: binding.description,
       category: binding.category,
       keys: binding.keys,
       mouse: binding.mouse,
@@ -1270,6 +1274,14 @@ export class CommandPalette extends HTMLElement {
       }
 
       li.appendChild(label)
+
+      if (cmd.description) {
+        const desc = document.createElement('span')
+        desc.className = 'palette__item-description'
+        desc.setAttribute('part', 'item-description')
+        desc.textContent = cmd.description
+        li.appendChild(desc)
+      }
 
       if (cmd.category) {
         const cat = document.createElement('span')
