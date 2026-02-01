@@ -1086,6 +1086,8 @@ export class CommandPalette extends HTMLElement {
     this._results = []
     /** @type {number} */
     this._activeIndex = 0
+    /** @type {'keyboard' | 'pointer'} */
+    this._inputMode = 'keyboard'
     /** @type {(() => void) | null} */
     this._cleanupTrigger = null
 
@@ -1122,6 +1124,7 @@ export class CommandPalette extends HTMLElement {
     this._backdrop.addEventListener('click', () => this._close())
     this._input.addEventListener('input', () => this._search())
     this._input.addEventListener('keydown', (e) => this._handleKey(e))
+    this._list.addEventListener('mousemove', () => { this._inputMode = 'pointer' })
   }
 
   get commands() { return this._commands }
@@ -1203,6 +1206,7 @@ export class CommandPalette extends HTMLElement {
   _onOpen() {
     this._input.value = ''
     this._activeIndex = 0
+    this._inputMode = 'keyboard'
     this._search()
     requestAnimationFrame(() => this._input.focus())
   }
@@ -1314,6 +1318,7 @@ export class CommandPalette extends HTMLElement {
 
       li.addEventListener('click', () => this._execute(i))
       li.addEventListener('mouseenter', () => {
+        if (this._inputMode !== 'pointer') return
         this._activeIndex = i
         this._render()
       })
@@ -1327,13 +1332,31 @@ export class CommandPalette extends HTMLElement {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
-        this._activeIndex = Math.min(this._activeIndex + 1, this._results.length - 1)
+        this._inputMode = 'keyboard'
+        this._activeIndex = this._activeIndex < this._results.length - 1
+          ? this._activeIndex + 1 : 0
         this._render()
         this._scrollToActive()
         break
       case 'ArrowUp':
         e.preventDefault()
-        this._activeIndex = Math.max(this._activeIndex - 1, 0)
+        this._inputMode = 'keyboard'
+        this._activeIndex = this._activeIndex > 0
+          ? this._activeIndex - 1 : this._results.length - 1
+        this._render()
+        this._scrollToActive()
+        break
+      case 'Home':
+        e.preventDefault()
+        this._inputMode = 'keyboard'
+        this._activeIndex = 0
+        this._render()
+        this._scrollToActive()
+        break
+      case 'End':
+        e.preventDefault()
+        this._inputMode = 'keyboard'
+        this._activeIndex = this._results.length - 1
         this._render()
         this._scrollToActive()
         break
@@ -2331,6 +2354,8 @@ export class ContextMenu extends HTMLElement {
     this._items = []
     /** @type {number} */
     this._activeIndex = -1
+    /** @type {'keyboard' | 'pointer'} */
+    this._inputMode = 'pointer'
     /** @type {(() => void) | null} */
     this._cleanupTrigger = null
     /** @type {((e: Event) => void) | null} */
@@ -2360,6 +2385,7 @@ export class ContextMenu extends HTMLElement {
       e.preventDefault()
       this._close()
     })
+    this._list.addEventListener('mousemove', () => { this._inputMode = 'pointer' })
   }
 
   get commands() { return this._commands }
@@ -2446,6 +2472,7 @@ export class ContextMenu extends HTMLElement {
 
   _onOpen() {
     this._activeIndex = -1
+    this._inputMode = 'pointer'
     this._buildItems()
     this._updatePosition()
     /** @type {(e: Event) => void} */
@@ -2544,6 +2571,7 @@ export class ContextMenu extends HTMLElement {
 
       li.addEventListener('click', () => this._execute(i))
       li.addEventListener('mouseenter', () => {
+        if (this._inputMode !== 'pointer') return
         this._activeIndex = i
         this._render()
       })
@@ -2557,12 +2585,28 @@ export class ContextMenu extends HTMLElement {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
-        this._activeIndex = Math.min(this._activeIndex + 1, this._items.length - 1)
+        this._inputMode = 'keyboard'
+        this._activeIndex = this._activeIndex < this._items.length - 1
+          ? this._activeIndex + 1 : 0
         this._render()
         break
       case 'ArrowUp':
         e.preventDefault()
-        this._activeIndex = Math.max(this._activeIndex - 1, 0)
+        this._inputMode = 'keyboard'
+        this._activeIndex = this._activeIndex > 0
+          ? this._activeIndex - 1 : this._items.length - 1
+        this._render()
+        break
+      case 'Home':
+        e.preventDefault()
+        this._inputMode = 'keyboard'
+        this._activeIndex = 0
+        this._render()
+        break
+      case 'End':
+        e.preventDefault()
+        this._inputMode = 'keyboard'
+        this._activeIndex = this._items.length - 1
         this._render()
         break
       case 'Enter':
