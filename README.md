@@ -32,7 +32,7 @@ const commands = [
 
 keybinds(commands)
 
-// Optional: command palette and cheatsheet
+// Optional: UI components (palette, cheatsheet, context menu, settings)
 registerComponents()
 document.querySelector('command-palette').commands = commands
 ```
@@ -44,7 +44,7 @@ document.querySelector('command-palette').commands = commands
 - **Schema-driven** — define bindings as data, separate triggers from handlers
 - **Context-aware** — commands activate based on application state
 - **User-rebindable** — `BindingsStore` persists overrides to localStorage
-- **Discoverable** — built-in `<command-palette>` and `<keybind-cheatsheet>` web components
+- **Discoverable** — built-in `<command-palette>`, `<keybind-cheatsheet>`, `<context-menu>`, and `<keybind-settings>` components
 - **Framework-agnostic** — pure JS core, works anywhere
 
 ## Docs

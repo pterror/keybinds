@@ -19,6 +19,7 @@ npm link keybinds
 ```html
 <command-palette auto-trigger></command-palette>
 <keybind-cheatsheet auto-trigger></keybind-cheatsheet>
+<context-menu auto-trigger target="#editor" menu="editor"></context-menu>
 
 <script type="module">
   import { keybinds, registerComponents } from 'keybinds'
@@ -30,6 +31,7 @@ npm link keybinds
       label: 'Save document',
       category: 'File',
       keys: ['$mod+s'],
+      menu: 'editor',
       execute: () => console.log('save')
     },
     {
@@ -46,8 +48,8 @@ npm link keybinds
 
   // Register and connect UI components
   registerComponents()
-  document.querySelector('command-palette').commands = commands
-  document.querySelector('keybind-cheatsheet').commands = commands
+  const allComponents = document.querySelectorAll('command-palette, keybind-cheatsheet, context-menu')
+  allComponents.forEach(el => el.commands = commands)
 </script>
 ```
 
@@ -55,6 +57,13 @@ That's it. You get:
 - `$mod+S` / `$mod+O` keybinds working
 - `$mod+K` opens command palette with search
 - Hold `Control` for 200ms shows cheatsheet
+- Right-click shows context menu (for commands with `menu` tag)
+
+Four web components are available via `registerComponents()`:
+- `<command-palette>` — search-driven command execution
+- `<keybind-cheatsheet>` — hold-to-show keybinding reference
+- `<context-menu>` — right-click menus driven by commands
+- `<keybind-settings>` — rebindable keyboard shortcuts panel
 
 ## Going Further
 
