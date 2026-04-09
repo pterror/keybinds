@@ -5,6 +5,7 @@ const window = new GlobalWindow()
 const globals = [
   'HTMLElement', 'CustomEvent', 'KeyboardEvent', 'MouseEvent',
   'document', 'localStorage', 'navigator', 'customElements',
+  'requestAnimationFrame', 'cancelAnimationFrame',
 ]
 
 for (const key of globals) {
