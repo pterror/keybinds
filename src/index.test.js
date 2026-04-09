@@ -19,6 +19,9 @@ import {
   eventToMouseBindingString,
   findConflict,
   KeybindSettings,
+  defaultScorer,
+  BasicContextMenu,
+  ContextMenu,
 } from './index.js'
 
 // --- Pure logic tests ---
@@ -977,6 +980,212 @@ describe('KeybindSettings', () => {
     resetBtn.click()
     expect(store.getOverrides()['save']).toBeUndefined()
 
+    cleanup(el)
+  })
+})
+
+// --- defaultScorer tests ---
+
+describe('defaultScorer', () => {
+  const cmdWithWhen = { id: 'a', label: 'A', when: () => true, execute: () => {} }
+  const cmdWithWhenFalse = { id: 'b', label: 'B', when: () => false, execute: () => {} }
+  const cmdNoWhen = { id: 'c', label: 'C', execute: () => {} }
+
+  test('command with no when scores 1', () => {
+    const scorer = defaultScorer()
+    expect(scorer(cmdNoWhen, {})).toBe(1)
+  })
+
+  test('command with when=true scores 2', () => {
+    const scorer = defaultScorer()
+    expect(scorer(cmdWithWhen, {})).toBe(2)
+  })
+
+  test('command with when=false scores 0 (excluded)', () => {
+    const scorer = defaultScorer()
+    expect(scorer(cmdWithWhenFalse, {})).toBe(0)
+  })
+
+  test('command with when scores higher than command without when', () => {
+    const scorer = defaultScorer()
+    expect(scorer(cmdWithWhen, {})).toBeGreaterThan(scorer(cmdNoWhen, {}))
+  })
+
+  test('frecency: within last 60s adds +3', () => {
+    const now = Date.now()
+    const history = [{ id: 'c', timestamp: now - 10_000 }]
+    const scorer = defaultScorer(history)
+    expect(scorer(cmdNoWhen, {})).toBe(1 + 3)
+  })
+
+  test('frecency: within last 5min (but not 60s) adds +2', () => {
+    const now = Date.now()
+    const history = [{ id: 'c', timestamp: now - 120_000 }]
+    const scorer = defaultScorer(history)
+    expect(scorer(cmdNoWhen, {})).toBe(1 + 2)
+  })
+
+  test('frecency: within last 30min (but not 5min) adds +1', () => {
+    const now = Date.now()
+    const history = [{ id: 'c', timestamp: now - 600_000 }]
+    const scorer = defaultScorer(history)
+    expect(scorer(cmdNoWhen, {})).toBe(1 + 1)
+  })
+
+  test('frecency: older than 30min adds 0', () => {
+    const now = Date.now()
+    const history = [{ id: 'c', timestamp: now - 4_000_000 }]
+    const scorer = defaultScorer(history)
+    expect(scorer(cmdNoWhen, {})).toBe(1)
+  })
+
+  test('frecency: uses best matching history entry', () => {
+    const now = Date.now()
+    const history = [
+      { id: 'c', timestamp: now - 600_000 },  // 10min → +1
+      { id: 'c', timestamp: now - 30_000 },   // 30s → +3
+    ]
+    const scorer = defaultScorer(history)
+    expect(scorer(cmdNoWhen, {})).toBe(1 + 3)
+  })
+
+  test('frecency: does not apply to other command ids', () => {
+    const now = Date.now()
+    const history = [{ id: 'different', timestamp: now - 1_000 }]
+    const scorer = defaultScorer(history)
+    expect(scorer(cmdNoWhen, {})).toBe(1)
+  })
+})
+
+// --- ContextMenu (new scored/searchable component) tests ---
+
+describe('ContextMenu (scored, searchable)', () => {
+  beforeEach(() => {
+    if (!customElements.get('keybinds-context-menu')) {
+      customElements.define('keybinds-context-menu', ContextMenu)
+    }
+  })
+
+  /** @returns {ContextMenu} */
+  function createMenu(commands = makeCommands(10)) {
+    const el = /** @type {ContextMenu} */ (document.createElement('keybinds-context-menu'))
+    el.commands = commands
+    document.body.appendChild(el)
+    return el
+  }
+
+  /** @param {number} n */
+  function makeCommands(n) {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `cmd${i}`,
+      label: `Command ${i}`,
+      execute: () => {},
+    }))
+  }
+
+  /** @param {HTMLElement} el */
+  function cleanup(el) { el.remove() }
+
+  test('renders top 7 items by default when open', () => {
+    const el = createMenu(makeCommands(15))
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const items = shadow.querySelectorAll('.context-menu__item')
+    expect(items.length).toBe(7)
+    cleanup(el)
+  })
+
+  test('renders all items when count <= maxVisible', () => {
+    const el = createMenu(makeCommands(5))
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const items = shadow.querySelectorAll('.context-menu__item')
+    expect(items.length).toBe(5)
+    cleanup(el)
+  })
+
+  test('"N more" row appears when items > maxVisible', () => {
+    const el = createMenu(makeCommands(10))
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const moreRow = shadow.querySelector('.context-menu__more-row')
+    expect(moreRow).not.toBeNull()
+    expect(moreRow?.textContent).toContain('3 more')
+    cleanup(el)
+  })
+
+  test('no "N more" row when items <= maxVisible', () => {
+    const el = createMenu(makeCommands(7))
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const moreRow = shadow.querySelector('.context-menu__more-row')
+    expect(moreRow).toBeNull()
+    cleanup(el)
+  })
+
+  test('maxVisible property controls visible count', () => {
+    const el = createMenu(makeCommands(20))
+    el.maxVisible = 3
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const items = shadow.querySelectorAll('.context-menu__item')
+    expect(items.length).toBe(3)
+    cleanup(el)
+  })
+
+  test('search shifts which items are visible', () => {
+    const cmds = [
+      { id: 'save', label: 'Save document', execute: () => {} },
+      { id: 'open', label: 'Open file', execute: () => {} },
+      { id: 'delete', label: 'Delete item', execute: () => {} },
+      { id: 'copy', label: 'Copy selection', execute: () => {} },
+      { id: 'paste', label: 'Paste clipboard', execute: () => {} },
+      { id: 'undo', label: 'Undo last action', execute: () => {} },
+      { id: 'redo', label: 'Redo action', execute: () => {} },
+      { id: 'find', label: 'Find in document', execute: () => {} },
+    ]
+    const el = createMenu(cmds)
+    el.maxVisible = 3
+    el.open = true
+
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const searchInput = /** @type {HTMLInputElement} */ (shadow.querySelector('.context-menu__search'))
+    expect(searchInput).not.toBeNull()
+
+    // Simulate typing into the search input
+    searchInput.value = 'doc'
+    searchInput.dispatchEvent(new Event('input'))
+
+    const items = shadow.querySelectorAll('.context-menu__item')
+    const labels = Array.from(items).map(li => li.querySelector('.context-menu__item-label')?.textContent)
+    // Both "Save document" and "Find in document" match "doc" — "redo" etc do not
+    expect(labels.some(l => l?.toLowerCase().includes('doc'))).toBe(true)
+    cleanup(el)
+  })
+
+  test('has a search input with part="search"', () => {
+    const el = createMenu()
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const input = shadow.querySelector('[part~="search"]')
+    expect(input).not.toBeNull()
+    expect(input?.tagName.toLowerCase()).toBe('input')
+    cleanup(el)
+  })
+
+  test('scorer property is accepted and used', () => {
+    const cmds = [
+      { id: 'a', label: 'Alpha', execute: () => {} },
+      { id: 'b', label: 'Beta', execute: () => {} },
+    ]
+    const el = createMenu(cmds)
+    // Scorer that always prioritizes 'b'
+    el.scorer = (cmd) => cmd.id === 'b' ? 10 : 1
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    const items = shadow.querySelectorAll('.context-menu__item')
+    const firstLabel = items[0]?.querySelector('.context-menu__item-label')?.textContent
+    expect(firstLabel).toBe('Beta')
     cleanup(el)
   })
 })
