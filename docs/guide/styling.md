@@ -15,16 +15,16 @@ import 'keybinds/styles/palette.css'
 Target shadow DOM elements using CSS `::part()`:
 
 ```css
-command-palette::part(dialog) {
+keybinds-command-palette::part(dialog) {
   background: #fff;
   border-radius: 12px;
 }
 
-command-palette::part(input) {
+keybinds-command-palette::part(input) {
   font-size: 18px;
 }
 
-command-palette::part(item-active) {
+keybinds-command-palette::part(item-active) {
   background: #0066cc;
   color: white;
 }
@@ -129,30 +129,30 @@ These are useful if you're styling via JavaScript or inspecting elements.
 ## Example: Light Theme
 
 ```css
-command-palette::part(backdrop) {
+keybinds-command-palette::part(backdrop) {
   background: rgba(0, 0, 0, 0.3);
 }
 
-command-palette::part(dialog) {
+keybinds-command-palette::part(dialog) {
   background: #ffffff;
   border: 1px solid #e0e0e0;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
-command-palette::part(input) {
+keybinds-command-palette::part(input) {
   color: #333;
   border-bottom: 1px solid #e0e0e0;
 }
 
-command-palette::part(item) {
+keybinds-command-palette::part(item) {
   color: #333;
 }
 
-command-palette::part(item-active) {
+keybinds-command-palette::part(item-active) {
   background: #f0f0f0;
 }
 
-command-palette::part(item-key) {
+keybinds-command-palette::part(item-key) {
   background: #f5f5f5;
   border-color: #ddd;
   color: #666;
@@ -162,7 +162,7 @@ command-palette::part(item-key) {
 ## Example: Glassmorphic
 
 ```css
-command-palette::part(dialog) {
+keybinds-command-palette::part(dialog) {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -175,14 +175,14 @@ Override default positioning:
 
 ```css
 /* Center vertically */
-command-palette::part(dialog) {
+keybinds-command-palette::part(dialog) {
   top: 50%;
   transform: translate(-50%, -50%);
 }
 
 /* Bottom sheet on mobile */
 @media (max-width: 600px) {
-  command-palette::part(dialog) {
+  keybinds-command-palette::part(dialog) {
     top: auto;
     bottom: 0;
     left: 0;

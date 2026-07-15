@@ -36,8 +36,14 @@ export type MatchResult = {
     positions?: number[];
 };
 export type Matcher = (query: string, text: string) => MatchResult | null;
+export type HistoryEntry = {
+    id: string;
+    timestamp: number;
+};
+export type Scorer = (command: Command, context: unknown) => number;
 export type SearchOptions = {
     matcher?: Matcher | undefined;
+    scorer?: Scorer | undefined;
 };
 export type ScoredCommand = Command & {
     active: boolean;
@@ -107,10 +113,27 @@ export declare function matchCommands(commands: Command[], query: string, contex
  * @param {Command[]} commands - Array of command definitions
  * @param {string} query - Search query
  * @param {Record<string, unknown>} [context] - Current context
- * @param {SearchOptions} [options] - Search options (e.g., custom matcher)
+ * @param {SearchOptions} [options] - Search options (e.g., custom matcher, scorer)
  * @returns {ScoredCommand[]} Matching commands sorted by relevance (active first, then by score)
  */
 export declare function searchCommands(commands: Command[], query: string, context?: Record<string, unknown>, options?: SearchOptions): ScoredCommand[];
+/**
+ * Default scorer — combines specificity and frecency.
+ *
+ * Specificity: commands with a `when` condition score higher (score 2 if
+ * `when(ctx)` is true, score 1 for commands with no condition).
+ *
+ * Frecency: if history entries are supplied, recently-executed commands
+ * receive an additive boost:
+ *   - within last 60 s  → +3
+ *   - within last 5 min → +2
+ *   - within last 30 min → +1
+ *
+ * @template {unknown} Ctx
+ * @param {HistoryEntry[]} [history]
+ * @returns {Scorer<Ctx>}
+ */
+export declare function defaultScorer<Ctx extends unknown>(history?: HistoryEntry[]): Scorer<Ctx>;
 /**
  * Group commands by category
  *
@@ -325,7 +348,7 @@ export declare function findConflict(schema: Schema, bindingStr: string, type: '
     label: string;
 } | null;
 /**
- * <command-palette> - Search-driven command execution
+ * <keybinds-command-palette> - Search-driven command execution
  *
  * Attributes:
  *   open         - Show/hide the palette
@@ -400,6 +423,14 @@ export declare class CommandPalette extends HTMLElement {
         score: number;
     }[];
     _render(): void;
+    /**
+     * @param {HTMLLIElement} li
+     * @param {ScoredCommand} cmd
+     * @param {number} index
+     */
+    _updateItem(li: HTMLLIElement, cmd: ScoredCommand, index: number): void;
+    /** @param {number} index */
+    _setActive(index: number): void;
     /** @param {KeyboardEvent} e */
     _handleKey(e: KeyboardEvent): void;
     _scrollToActive(): void;
@@ -407,7 +438,7 @@ export declare class CommandPalette extends HTMLElement {
     _execute(index: number): void;
 }
 /**
- * <keybind-cheatsheet> - Grouped display of available bindings
+ * <keybinds-cheatsheet> - Grouped display of available bindings
  *
  * Attributes:
  *   open         - Show/hide the cheatsheet
@@ -481,7 +512,7 @@ export declare function onModifierHold(modifiers: string | string[], callback: (
     target?: EventTarget;
 }): () => void;
 /**
- * <keybind-settings> - Keybinding settings panel
+ * <keybinds-settings> - Keybinding settings panel
  *
  * Attributes:
  *   open - Show/hide the settings panel
@@ -591,7 +622,7 @@ export declare class KeybindSettings extends HTMLElement {
     _renderConflict(): HTMLElement;
 }
 /**
- * <context-menu> - Context menu driven by commands
+ * <keybinds-basic-context-menu> - Context menu driven by commands (no search, no limit)
  *
  * Attributes:
  *   open         - Show/hide the menu
@@ -622,7 +653,7 @@ export declare class KeybindSettings extends HTMLElement {
  *   .context-menu__item-keys
  *   .context-menu__item-key
  */
-export declare class ContextMenu extends HTMLElement {
+export declare class BasicContextMenu extends HTMLElement {
     static get observedAttributes(): string[];
     constructor();
     get commands(): Command[];
@@ -661,6 +692,165 @@ export declare class ContextMenu extends HTMLElement {
     _handleKey(e: KeyboardEvent): void;
     /** @param {number} index */
     _execute(index: number): void;
+}
+/**
+ * <keybinds-context-menu> - Scored, searchable context menu driven by commands
+ *
+ * Shows top `maxVisible` items (default: 7) scored via the scorer (default:
+ * `defaultScorer()`). A search input at the top filters and re-scores. When
+ * more items exist than `maxVisible`, a subtle "▾ N more" row at the bottom
+ * reveals them on hover/focus with a smooth height transition.
+ *
+ * Attributes:
+ *   open         - Show/hide the menu
+ *   auto-trigger - Wire contextmenu event on target element
+ *   menu         - Menu tag to filter commands by
+ *   target       - CSS selector for contextmenu target (defaults to parentElement)
+ *
+ * Properties:
+ *   commands: Command[]           - Array of command definitions
+ *   context: object               - Context for `when` checks
+ *   open: boolean                 - Show/hide the menu
+ *   menu: string                  - Menu tag to filter by
+ *   position: { x: number, y: number } - Menu position
+ *   scorer: Scorer                - Scoring function (default: defaultScorer())
+ *   history: HistoryEntry[]       - Frecency history for defaultScorer
+ *   maxVisible: number            - Max visible items before "N more" (default: 7)
+ *
+ * Events:
+ *   execute - Fired when command is executed (detail: { command })
+ *   close   - Fired when menu is dismissed
+ *
+ * CSS parts:
+ *   search          - The search input element
+ *   context-menu    - Outer container
+ *   backdrop        - Click-away backdrop
+ *   list            - The <ul>
+ *   separator       - Category separator <li>
+ *   item            - Command <li>
+ *   item-active     - Active/focused item
+ *   item-disabled   - Inactive command
+ *   item-label      - Label span
+ *   item-keys       - Keys container
+ *   item-key        - Individual key <kbd>
+ *   more-row        - "▾ N more" toggle row
+ */
+export declare class ContextMenu extends HTMLElement {
+    static get observedAttributes(): string[];
+    constructor();
+    get commands(): Command[];
+    set commands(val: Command[]);
+    get context(): Record<string, unknown>;
+    set context(val: Record<string, unknown>);
+    get menu(): string;
+    set menu(val: string);
+    get open(): boolean;
+    set open(val: boolean);
+    get position(): {
+        x: number;
+        y: number;
+    };
+    set position(val: {
+        x: number;
+        y: number;
+    });
+    get scorer(): Scorer;
+    set scorer(val: Scorer);
+    get history(): HistoryEntry[];
+    set history(val: HistoryEntry[]);
+    get maxVisible(): number;
+    set maxVisible(val: number);
+    /**
+     * @param {string} name
+     * @param {string | null} _oldVal
+     * @param {string | null} newVal
+     */
+    attributeChangedCallback(name: string, _oldVal: string | null, newVal: string | null): void;
+    connectedCallback(): void;
+    disconnectedCallback(): void;
+    /** @param {boolean} enable */
+    _setupAutoTrigger(enable: boolean): void;
+    _onOpen(): void;
+    _onClose(): void;
+    _close(): void;
+    _buildItems(): void;
+    _updatePosition(): void;
+    _render(): void;
+    /** @param {KeyboardEvent} e */
+    _handleKey(e: KeyboardEvent): void;
+    /** @param {number} index */
+    _execute(index: number): void;
+}
+/**
+ * <keybinds-radial-menu> - Radial command menu with bilateral text layout
+ *
+ * Up to 8 commands arranged evenly around a circle. Labels on the right half
+ * are left-aligned to the right of their indicator; labels on the left half
+ * are right-aligned to the left. Direction becomes muscle memory; eight slots
+ * maps to Miller's Law (≤7±2).
+ *
+ * No auto-trigger — caller controls open/close.
+ *
+ * Attributes:
+ *   open - Reflects open state
+ *
+ * Properties:
+ *   commands: Command[]            - Up to 8 command definitions
+ *   context: object                - Context for `when` checks
+ *   open: boolean                  - Show/hide the menu
+ *
+ * Methods:
+ *   open({ x, y })  - Open at viewport coordinates (omit for viewport center)
+ *   close()         - Dismiss the menu
+ *
+ * Events:
+ *   command - Fired when command is executed (detail: { command })
+ *   close   - Fired when menu is dismissed
+ *
+ * CSS parts:
+ *   backdrop        - Click-away backdrop
+ *   container       - SVG/div outer wrapper
+ *   slot            - Each radial slot wrapper
+ *   slot-active     - Hovered/focused slot
+ *   slot-disabled   - Inactive command slot
+ *   indicator       - The dot/circle for each slot
+ *   label           - The text label for each slot
+ */
+export declare class RadialMenu extends HTMLElement {
+    static get observedAttributes(): string[];
+    constructor();
+    get commands(): Command[];
+    set commands(val: Command[]);
+    get context(): Record<string, unknown>;
+    set context(val: Record<string, unknown>);
+    get open(): boolean;
+    set open(val: boolean);
+    /**
+     * @param {string} name
+     * @param {string | null} _oldVal
+     * @param {string | null} newVal
+     */
+    attributeChangedCallback(name: string, _oldVal: string | null, newVal: string | null): void;
+    /**
+     * Open the menu at the given viewport coordinates.
+     * If no coords given, centers in the viewport.
+     * @param {{ x?: number, y?: number } | undefined} [coords]
+     */
+    openAt(coords?: {
+        x?: number;
+        y?: number;
+    } | undefined): void;
+    close(): void;
+    _onOpen(): void;
+    _onClose(): void;
+    _close(): void;
+    _buildItems(): void;
+    _updatePosition(): void;
+    _render(): void;
+    /** @param {KeyboardEvent} e */
+    _handleKey(e: KeyboardEvent): void;
+    /** @param {number} slot */
+    _execute(slot: number): void;
 }
 /**
  * Register all keybind components

@@ -87,7 +87,7 @@ const getContext = () => ({
 Pass context to components to gray out inactive commands:
 
 ```js
-const palette = document.querySelector('command-palette')
+const palette = document.querySelector('keybinds-command-palette')
 palette.commands = commands
 palette.context = getContext()  // Commands with failing `when` appear disabled
 ```

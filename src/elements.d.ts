@@ -2,12 +2,10 @@ import { CommandPalette, KeybindCheatsheet, KeybindSettings, BasicContextMenu, C
 
 declare global {
   interface HTMLElementTagNameMap {
-    'command-palette': CommandPalette
-    'keybind-cheatsheet': KeybindCheatsheet
-    'keybind-settings': KeybindSettings
+    'keybinds-command-palette': CommandPalette
+    'keybinds-cheatsheet': KeybindCheatsheet
+    'keybinds-settings': KeybindSettings
     'keybinds-basic-context-menu': BasicContextMenu
-    /** @deprecated Use keybinds-basic-context-menu instead */
-    'context-menu': BasicContextMenu
     'keybinds-context-menu': ContextMenu
   }
 }

@@ -382,8 +382,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     const tgt = /** @type {Element | null} */ (event.target)
 
     // Don't fire keybinds while the command palette or settings panel is open
-    if (tgt?.matches?.('command-palette[open]')) return
-    if (tgt?.matches?.('keybind-settings[open]')) return
+    if (tgt?.matches?.('keybinds-command-palette[open]')) return
+    if (tgt?.matches?.('keybinds-settings[open]')) return
 
     // Don't capture when typing in inputs (unless command explicitly allows it)
     const inInput = tgt?.tagName === 'INPUT' ||
@@ -414,8 +414,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 
     // Don't fire keybinds while the command palette or settings panel is open
     const tgt = /** @type {Element | null} */ (event.target)
-    if (tgt?.matches?.('command-palette[open]')) return
-    if (tgt?.matches?.('keybind-settings[open]')) return
+    if (tgt?.matches?.('keybinds-command-palette[open]')) return
+    if (tgt?.matches?.('keybinds-settings[open]')) return
 
     // O(1) lookup
     const candidates = lookup.mouse.get(eventToMouseLookup(event))
@@ -439,8 +439,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 
     // Don't fire keybinds while the command palette or settings panel is open
     const tgt = /** @type {Element | null} */ (event.target)
-    if (tgt?.matches?.('command-palette[open]')) return
-    if (tgt?.matches?.('keybind-settings[open]')) return
+    if (tgt?.matches?.('keybinds-command-palette[open]')) return
+    if (tgt?.matches?.('keybinds-settings[open]')) return
 
     const lookupKey = eventToWheelLookup(event)
     if (!lookupKey) return
@@ -1089,7 +1089,7 @@ export function findConflict(schema, bindingStr, type, excludeId) {
 // ========================================
 
 /**
- * <command-palette> - Search-driven command execution
+ * <keybinds-command-palette> - Search-driven command execution
  *
  * Attributes:
  *   open         - Show/hide the palette
@@ -1482,7 +1482,7 @@ export class CommandPalette extends HTMLElement {
 }
 
 /**
- * <keybind-cheatsheet> - Grouped display of available bindings
+ * <keybinds-cheatsheet> - Grouped display of available bindings
  *
  * Attributes:
  *   open         - Show/hide the cheatsheet
@@ -1797,7 +1797,7 @@ export function onModifierHold(modifiers, callback, options = {}) {
 }
 
 /**
- * <keybind-settings> - Keybinding settings panel
+ * <keybinds-settings> - Keybinding settings panel
  *
  * Attributes:
  *   open - Show/hide the settings panel
@@ -3596,25 +3596,20 @@ export class RadialMenu extends HTMLElement {
  * Call this once to define the custom elements
  */
 export function registerComponents() {
-  if (!customElements.get('command-palette')) {
-    customElements.define('command-palette', CommandPalette)
+  if (!customElements.get('keybinds-command-palette')) {
+    customElements.define('keybinds-command-palette', CommandPalette)
   }
-  if (!customElements.get('keybind-cheatsheet')) {
-    customElements.define('keybind-cheatsheet', KeybindCheatsheet)
+  if (!customElements.get('keybinds-cheatsheet')) {
+    customElements.define('keybinds-cheatsheet', KeybindCheatsheet)
   }
   if (!customElements.get('keybinds-basic-context-menu')) {
     customElements.define('keybinds-basic-context-menu', BasicContextMenu)
   }
-  // Backwards-compatible alias — logs deprecation warning
-  if (!customElements.get('context-menu')) {
-    console.warn('keybinds: <context-menu> is deprecated. Use <keybinds-basic-context-menu> or <keybinds-context-menu> instead.')
-    customElements.define('context-menu', class extends BasicContextMenu {})
-  }
   if (!customElements.get('keybinds-context-menu')) {
     customElements.define('keybinds-context-menu', ContextMenu)
   }
-  if (!customElements.get('keybind-settings')) {
-    customElements.define('keybind-settings', KeybindSettings)
+  if (!customElements.get('keybinds-settings')) {
+    customElements.define('keybinds-settings', KeybindSettings)
   }
   if (!customElements.get('keybinds-radial-menu')) {
     customElements.define('keybinds-radial-menu', RadialMenu)

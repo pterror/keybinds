@@ -17,9 +17,9 @@ npm link keybinds
 ## Minimal Setup
 
 ```html
-<command-palette auto-trigger></command-palette>
-<keybind-cheatsheet auto-trigger></keybind-cheatsheet>
-<context-menu auto-trigger target="#editor" menu="editor"></context-menu>
+<keybinds-command-palette auto-trigger></keybinds-command-palette>
+<keybinds-cheatsheet auto-trigger></keybinds-cheatsheet>
+<keybinds-basic-context-menu auto-trigger target="#editor" menu="editor"></keybinds-basic-context-menu>
 
 <script type="module">
   import { keybinds, registerComponents } from 'keybinds'
@@ -48,7 +48,7 @@ npm link keybinds
 
   // Register and connect UI components
   registerComponents()
-  const allComponents = document.querySelectorAll('command-palette, keybind-cheatsheet, context-menu')
+  const allComponents = document.querySelectorAll('keybinds-command-palette, keybinds-cheatsheet, keybinds-basic-context-menu')
   allComponents.forEach(el => el.commands = commands)
 </script>
 ```
@@ -60,10 +60,10 @@ That's it. You get:
 - Right-click shows context menu (for commands with `menu` tag)
 
 Four web components are available via `registerComponents()`:
-- `<command-palette>` — search-driven command execution
-- `<keybind-cheatsheet>` — hold-to-show keybinding reference
-- `<context-menu>` — right-click menus driven by commands
-- `<keybind-settings>` — rebindable keyboard shortcuts panel
+- `<keybinds-command-palette>` — search-driven command execution
+- `<keybinds-cheatsheet>` — hold-to-show keybinding reference
+- `<keybinds-basic-context-menu>` — right-click menus driven by commands
+- `<keybinds-settings>` — rebindable keyboard shortcuts panel
 
 ## Going Further
 
