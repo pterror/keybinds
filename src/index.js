@@ -3608,7 +3608,7 @@ export function registerComponents() {
   // Backwards-compatible alias — logs deprecation warning
   if (!customElements.get('context-menu')) {
     console.warn('keybinds: <context-menu> is deprecated. Use <keybinds-basic-context-menu> or <keybinds-context-menu> instead.')
-    customElements.define('context-menu', BasicContextMenu)
+    customElements.define('context-menu', class extends BasicContextMenu {})
   }
   if (!customElements.get('keybinds-context-menu')) {
     customElements.define('keybinds-context-menu', ContextMenu)
