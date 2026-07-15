@@ -12,7 +12,7 @@ A library that tries to solve this either:
 - Ships an opinionated layout that won't match your app (useless)
 - Ships a headless data layer for something trivially simple (pointless)
 
-### `<keybind-settings>` works because the scope is locked
+### `<keybinds-settings>` works because the scope is locked
 
 Keybind settings are different. The library owns the data model: binding strings, conflict detection, recording state machines, `$mod` normalization, modifier parsing. This is genuinely hard to get right and users shouldn't have to reimplement it.
 

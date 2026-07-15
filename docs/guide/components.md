@@ -2,10 +2,10 @@
 
 keybinds provides four web components for discoverability and customization:
 
-- **`<command-palette>`** - Search-driven command execution (like VS Code's Ctrl+Shift+P)
-- **`<keybind-cheatsheet>`** - Glanceable reference (like ChatGPT's hold-Ctrl overlay)
-- **`<keybind-settings>`** - Rebindable keyboard shortcuts panel
-- **`<context-menu>`** - Right-click context menus driven by commands
+- **`<keybinds-command-palette>`** - Search-driven command execution (like VS Code's Ctrl+Shift+P)
+- **`<keybinds-cheatsheet>`** - Glanceable reference (like ChatGPT's hold-Ctrl overlay)
+- **`<keybinds-settings>`** - Rebindable keyboard shortcuts panel
+- **`<keybinds-basic-context-menu>`** - Right-click context menus driven by commands
 
 ## Setup
 
@@ -18,10 +18,10 @@ registerComponents()  // Defines all custom elements
 Then use in HTML:
 
 ```html
-<command-palette></command-palette>
-<keybind-cheatsheet></keybind-cheatsheet>
-<keybind-settings></keybind-settings>
-<context-menu></context-menu>
+<keybinds-command-palette></keybinds-command-palette>
+<keybinds-cheatsheet></keybinds-cheatsheet>
+<keybinds-settings></keybinds-settings>
+<keybinds-basic-context-menu></keybinds-basic-context-menu>
 ```
 
 ## Command Palette
@@ -29,7 +29,7 @@ Then use in HTML:
 Search and execute commands by name.
 
 ```html
-<command-palette auto-trigger></command-palette>
+<keybinds-command-palette auto-trigger></keybinds-command-palette>
 ```
 
 ### Properties
@@ -58,7 +58,7 @@ Search and execute commands by name.
 ### Usage
 
 ```js
-const palette = document.querySelector('command-palette')
+const palette = document.querySelector('keybinds-command-palette')
 palette.commands = commands
 palette.context = { hasSelection: true }
 
@@ -76,7 +76,7 @@ palette.addEventListener('execute', (e) => {
 Grouped display of available bindings.
 
 ```html
-<keybind-cheatsheet auto-trigger></keybind-cheatsheet>
+<keybinds-cheatsheet auto-trigger></keybinds-cheatsheet>
 ```
 
 ### Properties
@@ -103,7 +103,7 @@ Grouped display of available bindings.
 ### Usage
 
 ```js
-const cheatsheet = document.querySelector('keybind-cheatsheet')
+const cheatsheet = document.querySelector('keybinds-cheatsheet')
 cheatsheet.commands = commands
 cheatsheet.context = getContext()
 
@@ -116,7 +116,7 @@ helpButton.onclick = () => cheatsheet.open = true
 Rebindable keyboard shortcuts panel with conflict detection.
 
 ```html
-<keybind-settings></keybind-settings>
+<keybinds-settings></keybinds-settings>
 ```
 
 ### Properties
@@ -153,7 +153,7 @@ const schema = defineSchema({
 const store = new BindingsStore(schema, 'myapp:keybinds')
 registerComponents()
 
-const settings = document.querySelector('keybind-settings')
+const settings = document.querySelector('keybinds-settings')
 settings.store = store
 
 // Open settings
@@ -179,7 +179,7 @@ settings.addEventListener('change', (e) => {
 Right-click context menus populated from your commands.
 
 ```html
-<context-menu auto-trigger></context-menu>
+<keybinds-basic-context-menu auto-trigger></keybinds-basic-context-menu>
 ```
 
 ### Properties
@@ -237,12 +237,12 @@ Basic right-click menu on the parent element:
 
 ```html
 <div class="editor">
-  <context-menu auto-trigger></context-menu>
+  <keybinds-basic-context-menu auto-trigger></keybinds-basic-context-menu>
 </div>
 ```
 
 ```js
-const menu = document.querySelector('context-menu')
+const menu = document.querySelector('keybinds-basic-context-menu')
 menu.commands = commands
 menu.menu = 'editor'  // Only show commands tagged with 'editor'
 ```
@@ -250,13 +250,13 @@ menu.menu = 'editor'  // Only show commands tagged with 'editor'
 Target a specific element instead of the parent:
 
 ```html
-<context-menu auto-trigger target="#canvas" menu="canvas"></context-menu>
+<keybinds-basic-context-menu auto-trigger target="#canvas" menu="canvas"></keybinds-basic-context-menu>
 ```
 
 Manual positioning:
 
 ```js
-const menu = document.querySelector('context-menu')
+const menu = document.querySelector('keybinds-basic-context-menu')
 menu.commands = commands
 menu.position = { x: event.clientX, y: event.clientY }
 menu.open = true

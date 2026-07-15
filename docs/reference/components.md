@@ -17,7 +17,7 @@ registerComponents()
 
 ## CommandPalette
 
-Custom element: `<command-palette>`
+Custom element: `<keybinds-command-palette>`
 
 ### Properties
 
@@ -77,7 +77,7 @@ deliberately moves again.
 
 ## KeybindCheatsheet
 
-Custom element: `<keybind-cheatsheet>`
+Custom element: `<keybinds-cheatsheet>`
 
 ### Properties
 
@@ -120,7 +120,7 @@ Custom element: `<keybind-cheatsheet>`
 
 ## KeybindSettings
 
-Custom element: `<keybind-settings>`
+Custom element: `<keybinds-settings>`
 
 ### Properties
 
@@ -183,7 +183,7 @@ Custom element: `<keybind-settings>`
 
 ## ContextMenu
 
-Custom element: `<context-menu>`
+Custom element: `<keybinds-basic-context-menu>`
 
 ### Properties
 

@@ -34,7 +34,7 @@ keybinds(commands)
 
 // Optional: UI components (palette, cheatsheet, context menu, settings)
 registerComponents()
-document.querySelector('command-palette').commands = commands
+document.querySelector('keybinds-command-palette').commands = commands
 ```
 
 `$mod` maps to `Cmd` on Mac, `Ctrl` elsewhere.
@@ -44,7 +44,7 @@ document.querySelector('command-palette').commands = commands
 - **Schema-driven** — define bindings as data, separate triggers from handlers
 - **Context-aware** — commands activate based on application state
 - **User-rebindable** — `BindingsStore` persists overrides to localStorage
-- **Discoverable** — built-in `<command-palette>`, `<keybind-cheatsheet>`, `<context-menu>`, and `<keybind-settings>` components
+- **Discoverable** — built-in `<keybinds-command-palette>`, `<keybinds-cheatsheet>`, `<keybinds-basic-context-menu>`/`<keybinds-context-menu>`, and `<keybinds-settings>` components
 - **Framework-agnostic** — pure JS core, works anywhere
 
 ## Docs

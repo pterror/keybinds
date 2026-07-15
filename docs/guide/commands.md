@@ -60,7 +60,7 @@ Scroll bindings use cooldown-based dispatch (100ms) to fire once per gesture rat
 
 ## Context Menu Tags
 
-The `menu` property tags commands for use with `<context-menu>`:
+The `menu` property tags commands for use with `<keybinds-basic-context-menu>`:
 
 ```js
 {
@@ -79,7 +79,7 @@ The `menu` property tags commands for use with `<context-menu>`:
 }
 ```
 
-See [Components > Context Menu](./components.md#context-menu) for rendering these with `<context-menu>`.
+See [Components > Context Menu](./components.md#context-menu) for rendering these with `<keybinds-basic-context-menu>`.
 
 ## Execution
 

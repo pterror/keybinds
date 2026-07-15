@@ -576,7 +576,7 @@ describe('keybinds', () => {
     cleanup()
   })
 
-  test('does not dispatch when event target is an open command-palette', () => {
+  test('does not dispatch when event target is an open keybinds-command-palette', () => {
     const fn = mock(() => {})
     const target = document.createElement('div')
     const commands = [
@@ -584,7 +584,7 @@ describe('keybinds', () => {
     ]
     const cleanup = keybinds(commands, undefined, { target })
 
-    const palette = document.createElement('command-palette')
+    const palette = document.createElement('keybinds-command-palette')
     palette.setAttribute('open', '')
     target.appendChild(palette)
 
@@ -782,8 +782,8 @@ describe('findConflict', () => {
 describe('KeybindSettings', () => {
   beforeEach(() => {
     localStorage.clear()
-    if (!customElements.get('keybind-settings')) {
-      customElements.define('keybind-settings', KeybindSettings)
+    if (!customElements.get('keybinds-settings')) {
+      customElements.define('keybinds-settings', KeybindSettings)
     }
   })
 
@@ -795,7 +795,7 @@ describe('KeybindSettings', () => {
   }
 
   function createSettings() {
-    const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybind-settings'))
+    const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
     const store = new BindingsStore(schema, 'test:settings')
     el.store = store
     document.body.appendChild(el)
@@ -945,7 +945,7 @@ describe('KeybindSettings', () => {
     ]
     const kbCleanup = keybinds(commands, undefined, { target })
 
-    const settings = document.createElement('keybind-settings')
+    const settings = document.createElement('keybinds-settings')
     settings.setAttribute('open', '')
     target.appendChild(settings)
 
