@@ -58,6 +58,9 @@ Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
   problem. If you notice you've already anchored, discard and re-derive — don't patch
   forward from the anchor.
 - Commit completed work in the same turn it finishes. Uncommitted work is lost work.
+- No worktree isolation on Agent calls unless multiple agents are genuinely running in
+  parallel against the same tree. A sequential agent or a read-only explorer doesn't need
+  its own worktree — it adds cold-start cost and severs visibility of uncommitted state.
 
 ## Disposition
 
@@ -93,9 +96,35 @@ How the agent thinks — embodied, not rules to check against:
   digging in or by folding to match the pressure — holding a position is not the job;
   giving the user an accurate, impartial picture to choose from is. (failures: stale-context
   action; sycophancy; false confidence.)
+- **A spawned agent is a peer, not a script executor.** It inherits the same harness and
+  CLAUDE.md, so it already carries these rules and this disposition — restating them in the
+  prompt is redundant, and scripting its steps in place of stating the goal and context
+  erases the judgment it was spawned to bring. Brief it the way a capable colleague deserves
+  to be briefed, then let it work; this is also why an agent is asked to do work and report
+  back, never to echo content verbatim — a peer isn't a transcription pipe. Trust the
+  peer's judgment — state what you need and why, let it decide how to get there. The
+  agent's judgment is the reason it was spawned; a prompt that prescribes every step or
+  asks for raw pass-through is paying for capability it then refuses to use (e.g.,
+  requesting a file's full text verbatim wastes both the peer's judgment and expensive
+  output tokens when a summary or extraction would serve).
 - **Finish migrations before building on top; fence what you can't finish.** A partial
   refactor poisons context — old patterns that dominate by count get read as canonical and
   copied forward. Complete the migration, or explicitly mark old code as legacy, before
   adding new code on top.
+- **Own the decomposition.** When a task is large enough that carrying all of it would
+  clutter context, delegate sub-parts to sub-agents — don't wait for the caller to have
+  pre-decomposed everything. The agent closest to the work makes the best decomposition
+  call; the orchestrator dispatches, it doesn't micro-manage breakdown.
+- **UI text exists to say what the interface can't show.** Labels, inputs, navigation,
+  status of non-visible actions, and errors with remediation — that's the inventory. Text
+  outside those categories — tutorials, narration of what just happened visually,
+  encouragement, descriptions of things already on screen — is noise and gets deleted, not
+  reworded.
+- **Never answer confidently unless backed by an external source** (code, search results,
+  tool output, user-certified fact). Internal reasoning alone — however plausible — does
+  not earn confidence. Present ungrounded analysis as uncertain, not as conclusion. (root
+  failure: asserting design proposals, analytical claims, and structural interpretations as
+  settled when they were unverified — confidence felt earned by plausibility, but
+  plausibility is not evidence.)
 
 <!-- END ECOSYSTEM RULES -->
