@@ -1100,6 +1100,9 @@ export function findConflict(schema, bindingStr, type, excludeId) {
  *   commands: Command[]     - Array of command definitions
  *   context: object         - Context for `when` checks
  *   matcher: Matcher        - Custom matcher function
+ *   source: (query) => Command[] | Promise<Command[]>
+ *                           - Further commands for a non-empty query, merged with `commands`
+ *   sourceDelay: number     - Milliseconds of typing pause before `source` is asked (default 200)
  *   open: boolean           - Show/hide the palette
  *
  * Events:
@@ -1146,6 +1149,14 @@ export class CommandPalette extends HTMLElement {
     this._inputMode = 'keyboard'
     /** @type {(() => void) | null} */
     this._cleanupTrigger = null
+    /** @type {((query: string) => Command[] | Promise<Command[]>) | undefined} */
+    this._source = undefined
+    /** @type {number} */
+    this.sourceDelay = 200
+    /** What `source` answered for the query in the input. @type {Command[]} */
+    this._sourced = []
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    this._sourceTimer = undefined
 
     const shadow = this.attachShadow({ mode: 'open' })
     shadow.innerHTML = `
@@ -1197,18 +1208,24 @@ export class CommandPalette extends HTMLElement {
   get commands() { return this._commands }
   set commands(val) {
     this._commands = val || []
-    if (this.open) this._search()
+    if (this.open) this._search(false)
   }
 
   get context() { return this._context }
   set context(val) {
     this._context = val || {}
-    if (this.open) this._search()
+    if (this.open) this._search(false)
   }
 
   get matcher() { return this._matcher }
   set matcher(val) {
     this._matcher = val
+    if (this.open) this._search(false)
+  }
+
+  get source() { return this._source }
+  set source(val) {
+    this._source = val
     if (this.open) this._search()
   }
 
@@ -1279,6 +1296,8 @@ export class CommandPalette extends HTMLElement {
   }
 
   _onClose() {
+    clearTimeout(this._sourceTimer)
+    this._sourced = []
     this._input.blur()
   }
 
@@ -1287,14 +1306,40 @@ export class CommandPalette extends HTMLElement {
     this.dispatchEvent(new CustomEvent('close'))
   }
 
-  _search() {
+  /** @param {boolean} [ask] - whether to ask `source` again for this query */
+  _search(ask = true) {
     const query = this._input.value
+    if (ask) this._ask(query)
+    const ids = new Set(this._commands.map(c => c.id))
+    const all = query ? [...this._commands, ...this._sourced.filter(c => !ids.has(c.id))] : this._commands
     this._results = query
-      ? searchCommands(this._commands, query, this._context, { matcher: this._matcher })
+      ? searchCommands(all, query, this._context, { matcher: this._matcher })
       : this._getAllVisible()
     this._activeIndex = 0
     this._render()
     this._list.scrollTop = 0
+  }
+
+  /**
+   * Asks `source` once typing pauses; an answer for a query no longer typed is dropped.
+   * @param {string} query
+   */
+  _ask(query) {
+    clearTimeout(this._sourceTimer)
+    this._sourced = []
+    const source = this._source
+    if (!source || !query) return
+    this._sourceTimer = setTimeout(async () => {
+      let got
+      try {
+        got = await source(query)
+      } catch {
+        return
+      }
+      if (!this.open || this._input.value !== query) return
+      this._sourced = got || []
+      this._search(false)
+    }, this.sourceDelay)
   }
 
   _getAllVisible() {

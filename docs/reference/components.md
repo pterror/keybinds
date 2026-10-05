@@ -25,6 +25,8 @@ Custom element: `<keybinds-command-palette>`
 |----------|------|-------------|
 | `commands` | `Command[]` | Commands to display and execute |
 | `context` | `object` | Context for `when` evaluation |
+| `source` | `(query: string) => Command[] \| Promise<Command[]>` | Further commands for a typed query, merged with `commands` (same `id` keeps the one in `commands`); an answer for a query no longer typed is dropped |
+| `sourceDelay` | `number` | Milliseconds of typing pause before `source` is asked (default 200) |
 | `open` | `boolean` | Visibility state |
 
 ### Attributes
