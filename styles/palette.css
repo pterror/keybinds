@@ -8,26 +8,26 @@
  *   import 'keybinds/styles/palette.css'
  *
  * Or target shadow parts:
- *   command-palette::part(input) { ... }
+ *   keybinds-command-palette::part(input) { ... }
  */
 
 /* ========================================
    Command Palette
    ======================================== */
 
-command-palette {
+keybinds-command-palette {
   position: fixed;
   inset: 0;
   z-index: 9999;
 }
 
-command-palette::part(backdrop) {
+keybinds-command-palette::part(backdrop) {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
 }
 
-command-palette::part(dialog) {
+keybinds-command-palette::part(dialog) {
   position: fixed;
   top: 20%;
   left: 50%;
@@ -44,7 +44,7 @@ command-palette::part(dialog) {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
 }
 
-command-palette::part(input) {
+keybinds-command-palette::part(input) {
   width: 100%;
   padding: 12px 16px;
   border: none;
@@ -55,11 +55,11 @@ command-palette::part(input) {
   outline: none;
 }
 
-command-palette::part(input)::placeholder {
+keybinds-command-palette::part(input)::placeholder {
   color: #666;
 }
 
-command-palette::part(list) {
+keybinds-command-palette::part(list) {
   flex: 1;
   overflow-y: auto;
   margin: 0;
@@ -67,7 +67,7 @@ command-palette::part(list) {
   list-style: none;
 }
 
-command-palette::part(item) {
+keybinds-command-palette::part(item) {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -76,37 +76,37 @@ command-palette::part(item) {
   color: #ccc;
 }
 
-command-palette::part(item-active) {
+keybinds-command-palette::part(item-active) {
   background: #333;
   color: #fff;
 }
 
-command-palette::part(item-disabled) {
+keybinds-command-palette::part(item-disabled) {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-command-palette::part(item-label) {
+keybinds-command-palette::part(item-label) {
   flex: 1;
 }
 
-command-palette::part(item-label-match) {
+keybinds-command-palette::part(item-label-match) {
   background: transparent;
   color: #fff;
   font-weight: 600;
 }
 
-command-palette::part(item-category) {
+keybinds-command-palette::part(item-category) {
   font-size: 12px;
   color: #666;
 }
 
-command-palette::part(item-keys) {
+keybinds-command-palette::part(item-keys) {
   display: flex;
   gap: 2px;
 }
 
-command-palette::part(item-key) {
+keybinds-command-palette::part(item-key) {
   font-family: monospace;
   font-size: 11px;
   padding: 2px 5px;
@@ -116,7 +116,7 @@ command-palette::part(item-key) {
   color: #888;
 }
 
-command-palette::part(empty) {
+keybinds-command-palette::part(empty) {
   padding: 16px;
   text-align: center;
   color: #666;
@@ -126,19 +126,19 @@ command-palette::part(empty) {
    Keybind Cheatsheet
    ======================================== */
 
-keybind-cheatsheet {
+keybinds-cheatsheet {
   position: fixed;
   inset: 0;
   z-index: 9999;
 }
 
-keybind-cheatsheet::part(backdrop) {
+keybinds-cheatsheet::part(backdrop) {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
 }
 
-keybind-cheatsheet::part(dialog) {
+keybinds-cheatsheet::part(dialog) {
   position: fixed;
   bottom: 24px;
   left: 50%;
@@ -154,11 +154,11 @@ keybind-cheatsheet::part(dialog) {
   overflow-x: auto;
 }
 
-keybind-cheatsheet::part(group) {
+keybinds-cheatsheet::part(group) {
   min-width: 140px;
 }
 
-keybind-cheatsheet::part(group-title) {
+keybinds-cheatsheet::part(group-title) {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -167,13 +167,13 @@ keybind-cheatsheet::part(group-title) {
   margin-bottom: 8px;
 }
 
-keybind-cheatsheet::part(list) {
+keybinds-cheatsheet::part(list) {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-keybind-cheatsheet::part(item) {
+keybinds-cheatsheet::part(item) {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -183,25 +183,25 @@ keybind-cheatsheet::part(item) {
   color: #ccc;
 }
 
-keybind-cheatsheet::part(item-disabled) {
+keybinds-cheatsheet::part(item-disabled) {
   opacity: 0.4;
 }
 
-keybind-cheatsheet::part(item-label) {
+keybinds-cheatsheet::part(item-label) {
   white-space: nowrap;
 }
 
-keybind-cheatsheet::part(item-keys) {
+keybinds-cheatsheet::part(item-keys) {
   display: flex;
   gap: 6px;
 }
 
-keybind-cheatsheet::part(item-binding) {
+keybinds-cheatsheet::part(item-binding) {
   display: flex;
   gap: 2px;
 }
 
-keybind-cheatsheet::part(item-key) {
+keybinds-cheatsheet::part(item-key) {
   font-family: monospace;
   font-size: 11px;
   padding: 2px 5px;
@@ -215,18 +215,18 @@ keybind-cheatsheet::part(item-key) {
    Context Menu
    ======================================== */
 
-context-menu {
+:is(keybinds-basic-context-menu, keybinds-context-menu) {
   position: fixed;
   inset: 0;
   z-index: 9999;
 }
 
-context-menu::part(backdrop) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(backdrop) {
   position: fixed;
   inset: 0;
 }
 
-context-menu::part(list) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(list) {
   min-width: 160px;
   margin: 0;
   padding: 4px 0;
@@ -238,13 +238,13 @@ context-menu::part(list) {
   outline: none;
 }
 
-context-menu::part(separator) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(separator) {
   height: 1px;
   margin: 4px 8px;
   background: #333;
 }
 
-context-menu::part(item) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -255,27 +255,27 @@ context-menu::part(item) {
   font-size: 13px;
 }
 
-context-menu::part(item-active) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-active) {
   background: #333;
   color: #fff;
 }
 
-context-menu::part(item-disabled) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-disabled) {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-context-menu::part(item-label) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-label) {
   flex: 1;
   white-space: nowrap;
 }
 
-context-menu::part(item-keys) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-keys) {
   display: flex;
   gap: 2px;
 }
 
-context-menu::part(item-key) {
+:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-key) {
   font-family: monospace;
   font-size: 11px;
   padding: 2px 5px;
