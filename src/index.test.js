@@ -1589,3 +1589,242 @@ describe('press and release bindings', () => {
     expect(reloaded.get()['open']?.mouse).toEqual(['middle'])
   })
 })
+
+// --- Release recording in the settings panel ---
+
+describe('KeybindSettings release recording', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    if (!customElements.get('keybinds-settings')) {
+      customElements.define('keybinds-settings', KeybindSettings)
+    }
+  })
+
+  const schema = {
+    hold: { label: 'Hold', category: 'A', keys: ['space'], mouse: ['middle', 'scrollup'] },
+    other: { label: 'Other', category: 'A', keys: ['o:up'] },
+  }
+
+  function setup() {
+    const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
+    const store = new BindingsStore(schema, 'test:release-settings')
+    el.store = store
+    // The runtime's CustomEvent is not a happy-dom Event, so the panel's own events can't be dispatched here
+    el.dispatchEvent = () => true
+    document.body.appendChild(el)
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    return { el, store, shadow }
+  }
+
+  /** @param {ShadowRoot} shadow @param {string} part */
+  const byPart = (shadow, part) => /** @type {HTMLElement[]} */ (Array.from(shadow.querySelectorAll('[part]')).filter(e => (e.getAttribute('part') ?? '').split(' ').includes(part)))
+  /** @param {ShadowRoot} shadow @param {string} part @param {number} [itemIndex] */
+  const addButton = (shadow, part, itemIndex = 0) => /** @type {HTMLElement} */ (byPart(shadow, part)[itemIndex])
+  /** @param {string} type @param {string} key @param {string} code @param {KeyboardEventInit} [init] */
+  const winKey = (type, key, code, init = {}) => window.dispatchEvent(new KeyboardEvent(type, { key, code, cancelable: true, ...init }))
+  /** @param {string} type @param {number} button @param {MouseEventInit} [init] */
+  const winMouse = (type, button, init = {}) => window.dispatchEvent(new MouseEvent(type, { button, cancelable: true, ...init }))
+
+  test('overlay has a release toggle that is off by default', () => {
+    const { el, shadow } = setup()
+    addButton(shadow, 'add-key').click()
+    const toggle = byPart(shadow, 'recording-release')[0]
+    expect(toggle?.getAttribute('aria-pressed')).toBe('false')
+    toggle?.click()
+    expect(byPart(shadow, 'recording-release-on').length).toBe(1)
+    expect(byPart(shadow, 'recording-release')[0]?.getAttribute('aria-pressed')).toBe('true')
+    el.remove()
+  })
+
+  test('a key recorded with the toggle on becomes x:up on keyup', () => {
+    const { el, store, shadow } = setup()
+    addButton(shadow, 'add-key').click()
+    byPart(shadow, 'recording-release')[0]?.click()
+    winKey('keydown', 'k', 'KeyK')
+    expect(store.get()['hold']?.keys).toEqual(['space'])
+    winKey('keyup', 'k', 'KeyK')
+    expect(store.get()['hold']?.keys).toEqual(['space', 'k:up'])
+    el.remove()
+  })
+
+  test('a recorded release keeps the modifiers held at press time', () => {
+    const { el, store, shadow } = setup()
+    addButton(shadow, 'add-key').click()
+    byPart(shadow, 'recording-release')[0]?.click()
+    winKey('keydown', 'k', 'KeyK', { ctrlKey: true })
+    winKey('keyup', 'k', 'KeyK')
+    expect(store.get()['hold']?.keys).toEqual(['space', '$mod+k:up'])
+    el.remove()
+  })
+
+  test('a keyup for a key that was not pressed while recording is ignored', () => {
+    const { el, store, shadow } = setup()
+    addButton(shadow, 'add-key').click()
+    byPart(shadow, 'recording-release')[0]?.click()
+    winKey('keyup', 'k', 'KeyK')
+    expect(store.get()['hold']?.keys).toEqual(['space'])
+    el.remove()
+  })
+
+  test('with the toggle off, recording is still a press', () => {
+    const { el, store, shadow } = setup()
+    addButton(shadow, 'add-key').click()
+    winKey('keydown', 'k', 'KeyK')
+    expect(store.get()['hold']?.keys).toEqual(['space', 'k'])
+    el.remove()
+  })
+
+  test('a mouse button recorded with the toggle on becomes x:up on mouseup', () => {
+    const { el, store, shadow } = setup()
+    addButton(shadow, 'add-mouse').click()
+    byPart(shadow, 'recording-release')[0]?.click()
+    winMouse('mousedown', 3)
+    expect(store.get()['hold']?.mouse).toEqual(['middle', 'scrollup'])
+    winMouse('mouseup', 3)
+    expect(store.get()['hold']?.mouse).toEqual(['middle', 'scrollup', 'back:up'])
+    el.remove()
+  })
+
+  test('scrolling is not recorded in release mode', () => {
+    const { el, store, shadow } = setup()
+    addButton(shadow, 'add-mouse').click()
+    byPart(shadow, 'recording-release')[0]?.click()
+    window.dispatchEvent(new WheelEvent('wheel', { deltaY: -10, cancelable: true }))
+    expect(store.get()['hold']?.mouse).toEqual(['middle', 'scrollup'])
+    el.remove()
+  })
+
+  test('clicking the toggle is not recorded as a mouse binding', () => {
+    const { el, store, shadow } = setup()
+    addButton(shadow, 'add-mouse').click()
+    const toggle = /** @type {HTMLElement} */ (byPart(shadow, 'recording-release')[0])
+    toggle.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true, composed: true, cancelable: true }))
+    expect(store.get()['hold']?.mouse).toEqual(['middle', 'scrollup'])
+    el.remove()
+  })
+
+  test('re-recording a binding can also record a release', () => {
+    const { el, store, shadow } = setup()
+    const keyChip = /** @type {HTMLElement} */ (shadow.querySelector('.settings__binding-keys'))
+    keyChip.click()
+    byPart(shadow, 'recording-release')[0]?.click()
+    winKey('keydown', 'j', 'KeyJ')
+    winKey('keyup', 'j', 'KeyJ')
+    expect(store.get()['hold']?.keys).toEqual(['j:up'])
+    el.remove()
+  })
+
+  test('chip switch flips a press to a release and back', () => {
+    const { el, store, shadow } = setup()
+    byPart(shadow, 'binding-release')[0]?.click()
+    expect(store.get()['hold']?.keys).toEqual(['space:up'])
+    expect(byPart(shadow, 'binding-release-on').length).toBeGreaterThan(0)
+    byPart(shadow, 'binding-release-on')[0]?.click()
+    expect(store.get()['hold']?.keys).toEqual(['space'])
+    el.remove()
+  })
+
+  test('scroll bindings have no chip switch', () => {
+    const { el, shadow } = setup()
+    const chips = Array.from(shadow.querySelectorAll('.settings__binding'))
+    const scrollChip = chips.find(c => c.textContent?.includes('Scroll'))
+    expect(scrollChip).toBeDefined()
+    expect(scrollChip && byPart(/** @type {any} */ (scrollChip), 'binding-release').length).toBe(0)
+    el.remove()
+  })
+
+  test('flipping into a taken binding asks before replacing', () => {
+    const { el, store, shadow } = setup()
+    // hold has "space"; other already has "o:up". Make hold's first key "o" so flipping would collide.
+    store.save({ hold: { keys: ['o'] } })
+    byPart(shadow, 'binding-release')[0]?.click()
+    expect(store.get()['hold']?.keys).toEqual(['o'])
+    expect(byPart(shadow, 'conflict').length).toBe(1)
+    byPart(shadow, 'conflict-accept')[0]?.click()
+    expect(store.get()['hold']?.keys).toEqual(['o:up'])
+    expect(store.get()['other']?.keys).toEqual([])
+    el.remove()
+  })
+
+  test('cancelling a flip conflict leaves the binding and ends the prompt', () => {
+    const { el, store, shadow } = setup()
+    store.save({ hold: { keys: ['o'] } })
+    byPart(shadow, 'binding-release')[0]?.click()
+    byPart(shadow, 'conflict-cancel')[0]?.click()
+    expect(store.get()['hold']?.keys).toEqual(['o'])
+    expect(byPart(shadow, 'conflict').length).toBe(0)
+    expect(byPart(shadow, 'recording-overlay').length).toBe(0)
+    el.remove()
+  })
+})
+
+// --- Key aliases ---
+
+describe('key aliases', () => {
+  const cases = /** @type {[string, string, string][]} */ ([
+    ['up', 'ArrowUp', 'ArrowUp'],
+    ['down', 'ArrowDown', 'ArrowDown'],
+    ['left', 'ArrowLeft', 'ArrowLeft'],
+    ['right', 'ArrowRight', 'ArrowRight'],
+    ['arrowup', 'ArrowUp', 'ArrowUp'],
+    ['space', ' ', 'Space'],
+    ['escape', 'Escape', 'Escape'],
+    ['comma', ',', 'Comma'],
+    ['slash', '/', 'Slash'],
+    ['bracketleft', '[', 'BracketLeft'],
+    ['[', '[', 'BracketLeft'],
+    ['pageup', 'PageUp', 'PageUp'],
+    ['f5', 'F5', 'F5'],
+    ['5', '5', 'Digit5'],
+    ['a', 'A', 'KeyA'],
+  ])
+  for (const [binding, key, code] of cases) {
+    test(`"${binding}" fires on a real ${code} press`, () => {
+      const fn = mock(() => {})
+      const target = document.createElement('div')
+      const cleanup = keybinds([{ id: 'x', label: 'X', keys: [binding], execute: fn }], undefined, { target })
+      target.dispatchEvent(new KeyboardEvent('keydown', { key, code }))
+      expect(fn).toHaveBeenCalledTimes(1)
+      cleanup()
+    })
+  }
+
+  test('aliases and arrow names conflict and share a release', () => {
+    expect(findConflict({ s: { label: 'S', keys: ['arrowup'] } }, 'up', 'keys')?.commandId).toBe('s')
+    const up = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'x', label: 'X', keys: ['left:up'], execute: up }], undefined, { target })
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft' }))
+    target.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', code: 'ArrowLeft' }))
+    expect(up).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('error for an unknown key names what was typed', () => {
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['nope'], execute: () => {} }])).toThrow('Unknown key "nope"')
+  })
+
+  test('modifier and mouse aliases fire', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'a', label: 'A', keys: ['control+a'], execute: fn },
+      { id: 'b', label: 'B', keys: ['option+b'], execute: fn },
+      { id: 'c', label: 'C', keys: ['cmd+c'], execute: fn },
+      { id: 'd', label: 'D', keys: ['command+d'], execute: fn },
+      { id: 'l', label: 'L', mouse: ['left'], execute: fn },
+      { id: 'r', label: 'R', mouse: ['rightclick'], execute: fn },
+      { id: 'm', label: 'M', mouse: ['middleclick'], execute: fn },
+    ], undefined, { target })
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', ctrlKey: true }))
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', altKey: true }))
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', metaKey: true }))
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', metaKey: true }))
+    target.dispatchEvent(new MouseEvent('mousedown', { button: 0 }))
+    target.dispatchEvent(new MouseEvent('mousedown', { button: 2 }))
+    target.dispatchEvent(new MouseEvent('mousedown', { button: 1 }))
+    expect(fn).toHaveBeenCalledTimes(7)
+    cleanup()
+  })
+})

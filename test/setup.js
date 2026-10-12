@@ -3,7 +3,7 @@ import { GlobalWindow } from 'happy-dom'
 const window = new GlobalWindow()
 
 const globals = [
-  'HTMLElement', 'CustomEvent', 'KeyboardEvent', 'MouseEvent',
+  'window', 'WheelEvent', 'HTMLElement', 'CustomEvent', 'KeyboardEvent', 'MouseEvent',
   'document', 'localStorage', 'navigator', 'customElements',
   'requestAnimationFrame', 'cancelAnimationFrame',
 ]

@@ -80,6 +80,14 @@ function parseMods(parts) {
   return { mods, remaining }
 }
 
+// Alias key names, resolved to the name a real key event reports
+const KEY_ALIASES = /** @type {Record<string, string>} */ ({
+  up: 'arrowup',
+  down: 'arrowdown',
+  left: 'arrowleft',
+  right: 'arrowright'
+})
+
 // Valid key names (subset - common ones)
 const VALID_KEYS = new Set([
   'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
@@ -138,15 +146,16 @@ function parseKey(keyStr) {
 
   const { mods, remaining } = parseMods(parts)
 
-  const key = remaining[0]
-  if (key === undefined) {
+  const rawKey = remaining[0]
+  if (rawKey === undefined) {
     throw new Error(`Key binding has no key (only modifiers): "${keyStr}"`)
   }
+  const key = KEY_ALIASES[rawKey] ?? rawKey
   if (remaining.length > 1) {
     throw new Error(`Key binding has multiple keys: "${keyStr}" (got: ${remaining.join(', ')})`)
   }
   if (!VALID_KEYS.has(key)) {
-    throw new Error(`Unknown key "${key}" in binding "${keyStr}"`)
+    throw new Error(`Unknown key "${rawKey}" in binding "${keyStr}"`)
   }
 
   return { mods, key, release }
@@ -2092,10 +2101,22 @@ export class KeybindSettings extends HTMLElement {
     this._storeListener = null
     /** @type {{ commandId: string, type: 'keys' | 'mouse', index: number | null } | null} */
     this._recording = null
-    /** @type {{ commandId: string, label: string, bindingStr: string, type: 'keys' | 'mouse', index: number | null } | null} */
+    /** @type {{ commandId: string, label: string, bindingStr: string, type: 'keys' | 'mouse', index: number | null, flip?: boolean } | null} */
     this._conflict = null
+    /** Whether recording captures a release (the input comes up) instead of a press */
+    this._recordRelease = false
+    /** @type {HTMLElement | null} */
+    this._releaseToggle = null
+    /** Press-time binding of the input currently held while recording a release */
+    /** @type {{ kind: 'key' | 'mouse', id: string, binding: string } | null} */
+    this._heldPress = null
     /** @type {((e: Event) => void) | null} */
     this._recordKeyHandler = null
+    /** @type {((e: Event) => void) | null} */
+    this._recordKeyUpHandler = null
+    /** @type {((e: Event) => void) | null} */
+    this._recordMouseUpHandler = null
+
     /** @type {((e: Event) => void) | null} */
     this._recordMouseHandler = null
     /** @type {((e: Event) => void) | null} */
@@ -2230,9 +2251,15 @@ export class KeybindSettings extends HTMLElement {
     this._stopRecording()
     this._recording = { commandId, type, index }
     this._conflict = null
+    this._recordRelease = false
+    this._heldPress = null
+
+    /** @param {Event} e */
+    const fromToggle = (e) => !!this._releaseToggle && e.composedPath().includes(this._releaseToggle)
 
     /** @param {Event} e */
     const keyHandler = (e) => {
+      if (fromToggle(e)) return
       const event = /** @type {KeyboardEvent} */ (e)
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -2249,11 +2276,30 @@ export class KeybindSettings extends HTMLElement {
 
       event.preventDefault()
       event.stopPropagation()
+      if (this._recordRelease) {
+        // Held until its keyup; the press-time modifiers are what the release binds to
+        if (!event.repeat) this._heldPress = { kind: 'key', id: event.code || event.key, binding: bindingStr }
+        return
+      }
       this._handleRecordedBinding(bindingStr)
     }
 
     /** @param {Event} e */
+    const keyUpHandler = (e) => {
+      if (fromToggle(e)) return
+      if (!this._recordRelease || this._recording?.type !== 'keys') return
+      const event = /** @type {KeyboardEvent} */ (e)
+      const held = this._heldPress
+      if (!held || held.kind !== 'key' || held.id !== (event.code || event.key)) return
+      event.preventDefault()
+      event.stopPropagation()
+      this._heldPress = null
+      this._handleRecordedBinding(held.binding + RELEASE_SUFFIX)
+    }
+
+    /** @param {Event} e */
     const mouseHandler = (e) => {
+      if (fromToggle(e)) return
       if (this._recording?.type !== 'mouse') return
 
       const event = /** @type {MouseEvent} */ (e)
@@ -2262,12 +2308,30 @@ export class KeybindSettings extends HTMLElement {
 
       event.preventDefault()
       event.stopPropagation()
+      if (this._recordRelease) {
+        this._heldPress = { kind: 'mouse', id: String(event.button), binding: bindingStr }
+        return
+      }
       this._handleRecordedBinding(bindingStr)
+    }
+
+    /** @param {Event} e */
+    const mouseUpHandler = (e) => {
+      if (fromToggle(e)) return
+      if (!this._recordRelease || this._recording?.type !== 'mouse') return
+      const event = /** @type {MouseEvent} */ (e)
+      const held = this._heldPress
+      if (!held || held.kind !== 'mouse' || held.id !== String(event.button)) return
+      event.preventDefault()
+      event.stopPropagation()
+      this._heldPress = null
+      this._handleRecordedBinding(held.binding + RELEASE_SUFFIX)
     }
 
     /** @param {Event} e */
     const wheelHandler = (e) => {
       if (this._recording?.type !== 'mouse') return
+      if (this._recordRelease) return // scroll has no release
 
       const event = /** @type {WheelEvent} */ (e)
       const bindingStr = eventToMouseBindingString(event)
@@ -2279,11 +2343,15 @@ export class KeybindSettings extends HTMLElement {
     }
 
     this._recordKeyHandler = keyHandler
+    this._recordKeyUpHandler = keyUpHandler
     this._recordMouseHandler = mouseHandler
+    this._recordMouseUpHandler = mouseUpHandler
     this._recordWheelHandler = wheelHandler
 
     window.addEventListener('keydown', keyHandler, true)
+    window.addEventListener('keyup', keyUpHandler, true)
     window.addEventListener('mousedown', mouseHandler, true)
+    window.addEventListener('mouseup', mouseUpHandler, true)
     window.addEventListener('wheel', wheelHandler, { capture: true })
 
     this._render()
@@ -2294,9 +2362,17 @@ export class KeybindSettings extends HTMLElement {
       window.removeEventListener('keydown', this._recordKeyHandler, true)
       this._recordKeyHandler = null
     }
+    if (this._recordKeyUpHandler) {
+      window.removeEventListener('keyup', this._recordKeyUpHandler, true)
+      this._recordKeyUpHandler = null
+    }
     if (this._recordMouseHandler) {
       window.removeEventListener('mousedown', this._recordMouseHandler, true)
       this._recordMouseHandler = null
+    }
+    if (this._recordMouseUpHandler) {
+      window.removeEventListener('mouseup', this._recordMouseUpHandler, true)
+      this._recordMouseUpHandler = null
     }
     if (this._recordWheelHandler) {
       window.removeEventListener('wheel', this._recordWheelHandler, true)
@@ -2304,6 +2380,63 @@ export class KeybindSettings extends HTMLElement {
     }
     this._recording = null
     this._conflict = null
+    this._recordRelease = false
+    this._heldPress = null
+    this._releaseToggle = null
+  }
+
+  /** @param {boolean} release */
+  _setRecordRelease(release) {
+    this._recordRelease = release
+    this._heldPress = null
+    this._render()
+  }
+
+  /**
+   * Switch a stored binding between its press and release form
+   * @param {string} commandId
+   * @param {'keys' | 'mouse'} type
+   * @param {number} index
+   */
+  _flipRelease(commandId, type, index) {
+    const current = this._getBindings(commandId)[type][index]
+    if (current === undefined) return
+    const { body, release } = splitRelease(current.toLowerCase())
+    const flipped = release ? current.trim().slice(0, body.length) : current.trim() + RELEASE_SUFFIX
+
+    if (this._store) {
+      const conflict = findConflict(this._store.get(), flipped, type, commandId)
+      if (conflict) {
+        this._stopRecording()
+        this._recording = { commandId, type, index }
+        this._conflict = { ...conflict, bindingStr: flipped, type, index, flip: true }
+        this._render()
+        return
+      }
+    }
+    this._applyBinding(commandId, type, index, flipped)
+  }
+
+  /**
+   * Release switch inside the recording overlay
+   * @returns {HTMLElement}
+   */
+  _renderReleaseToggle() {
+    const toggle = document.createElement('button')
+    toggle.className = 'settings__recording-release'
+    toggle.setAttribute('part', this._recordRelease ? 'recording-release recording-release-on' : 'recording-release')
+    toggle.setAttribute('aria-pressed', String(this._recordRelease))
+    toggle.textContent = 'Release'
+    toggle.addEventListener('click', () => this._setRecordRelease(!this._recordRelease))
+    this._releaseToggle = toggle
+    return toggle
+  }
+
+  /** @returns {string} */
+  _recordingPrompt() {
+    const keys = this._recording?.type === 'keys'
+    if (this._recordRelease) return keys ? 'Press and release a key...' : 'Press and release a button...'
+    return keys ? 'Press a key...' : 'Click or scroll...'
   }
 
   /** @param {string} bindingStr */
@@ -2364,6 +2497,7 @@ export class KeybindSettings extends HTMLElement {
   }
 
   _cancelConflict() {
+    if (this._conflict?.flip) this._stopRecording()
     this._conflict = null
     this._render()
   }
@@ -2496,8 +2630,9 @@ export class KeybindSettings extends HTMLElement {
           const recordingText = document.createElement('span')
           recordingText.className = 'settings__recording-overlay'
           recordingText.setAttribute('part', 'recording-overlay')
-          recordingText.textContent = this._recording?.type === 'keys' ? 'Press a key...' : 'Click or scroll...'
+          recordingText.textContent = this._recordingPrompt()
           overlay.appendChild(recordingText)
+          overlay.appendChild(this._renderReleaseToggle())
           bindingsEl.appendChild(overlay)
 
           // Show conflict if any
@@ -2565,8 +2700,11 @@ export class KeybindSettings extends HTMLElement {
       const overlay = document.createElement('span')
       overlay.className = 'settings__recording-overlay'
       overlay.setAttribute('part', 'recording-overlay')
-      overlay.textContent = type === 'keys' ? 'Press a key...' : 'Click or scroll...'
-      wrapper.appendChild(overlay)
+      overlay.textContent = this._recordingPrompt()
+      if (!this._conflict?.flip) {
+        wrapper.appendChild(overlay)
+        wrapper.appendChild(this._renderReleaseToggle())
+      }
 
       if (this._conflict) {
         wrapper.appendChild(this._renderConflict())
@@ -2593,6 +2731,17 @@ export class KeybindSettings extends HTMLElement {
     }
     keysContainer.addEventListener('click', () => this._startRecording(commandId, type, index))
     binding.appendChild(keysContainer)
+
+    const isRelease = splitRelease(bindingStr.toLowerCase()).release
+    if (isRelease || !/(^|\+)scroll(up|down|left|right)$/i.test(bindingStr.trim())) {
+      const releaseBtn = document.createElement('button')
+      releaseBtn.className = 'settings__binding-release'
+      releaseBtn.setAttribute('part', isRelease ? 'binding-release binding-release-on' : 'binding-release')
+      releaseBtn.setAttribute('aria-pressed', String(isRelease))
+      releaseBtn.textContent = 'Release'
+      releaseBtn.addEventListener('click', () => this._flipRelease(commandId, type, index))
+      binding.appendChild(releaseBtn)
+    }
 
     const removeBtn = document.createElement('button')
     removeBtn.className = 'settings__binding-remove'

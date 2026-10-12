@@ -297,3 +297,7 @@ const cleanup = onModifierHold('Control', (held) => {
 ```js
 onModifierHold(['Control', 'Meta'], callback)  // Either modifier
 ```
+
+### Recording releases
+
+While recording, the prompt has a **Release** toggle. With it on, the next key or button is recorded as a release (`k:up`, `back:up`): press it, and the binding is stored when it comes up, with the modifiers held at press time. Each binding also has a **Release** switch that flips it between its press and release form. Scroll bindings have no release.

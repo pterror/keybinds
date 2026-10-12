@@ -167,10 +167,12 @@ Custom element: `<keybinds-settings>`
 | `binding-keys` | Key display container |
 | `binding-key` | Individual kbd |
 | `binding-remove` | Remove (×) button |
+| `binding-release` | Press/release switch on a binding (`binding-release-on` while it is a release) |
 | `item-add` | Add binding container |
 | `add-key` | Add Key button |
 | `add-mouse` | Add Mouse button |
 | `recording-overlay` | Recording prompt text |
+| `recording-release` | Release toggle in the recording prompt (`recording-release-on` while on) |
 | `conflict` | Conflict warning |
 | `conflict-accept` | Replace button |
 | `conflict-cancel` | Cancel button |
