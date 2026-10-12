@@ -17,12 +17,14 @@
  * @typedef {Object} ParsedKey
  * @property {Modifiers} mods
  * @property {string} key
+ * @property {boolean} release - Binding fires when the key comes up ("k:up")
  */
 
 /**
  * @typedef {Object} ParsedMouse
  * @property {Modifiers} mods
- * @property {number} button
+ * @property {number} button - Index into BUTTON_NAMES
+ * @property {boolean} release - Binding fires when the button comes up ("middle:up")
  */
 
 /**
@@ -96,11 +98,29 @@ const VALID_MOUSE = new Set([
   'click', 'leftclick', 'left',
   'rightclick', 'right',
   'middleclick', 'middle',
+  'backclick', 'back',
+  'forwardclick', 'forward',
   'scrollup', 'scrolldown', 'scrollleft', 'scrollright'
 ])
 
+const RELEASE_SUFFIX = ':up'
+
 /**
- * Parse a key string like "Ctrl+Shift+K" into normalized form
+ * Split a lowercase binding into its press/release flag and the rest.
+ * A trailing ":up" marks a release binding.
+ * @param {string} lower
+ * @returns {{ body: string, release: boolean }}
+ */
+function splitRelease(lower) {
+  const trimmed = lower.trim()
+  if (trimmed.endsWith(RELEASE_SUFFIX)) {
+    return { body: trimmed.slice(0, -RELEASE_SUFFIX.length), release: true }
+  }
+  return { body: trimmed, release: false }
+}
+
+/**
+ * Parse a key string like "Ctrl+Shift+K" or "K:up" into normalized form
  * @param {string} keyStr
  * @returns {ParsedKey}
  * @throws {Error} if key binding is invalid
@@ -110,7 +130,8 @@ function parseKey(keyStr) {
     throw new Error(`Invalid key binding: ${keyStr}`)
   }
 
-  const parts = keyStr.toLowerCase().split('+').map(p => p.trim()).filter(Boolean)
+  const { body, release } = splitRelease(keyStr.toLowerCase())
+  const parts = body.split('+').map(p => p.trim()).filter(Boolean)
   if (parts.length === 0) {
     throw new Error(`Empty key binding: "${keyStr}"`)
   }
@@ -128,12 +149,13 @@ function parseKey(keyStr) {
     throw new Error(`Unknown key "${key}" in binding "${keyStr}"`)
   }
 
-  return { mods, key }
+  return { mods, key, release }
 }
 
 /**
- * Parse a mouse binding like "$mod+Click" or "MiddleClick"
- * Supported: Click/LeftClick, RightClick, MiddleClick
+ * Parse a mouse binding like "$mod+Click", "MiddleClick" or "Back:up"
+ * Supported: Click/LeftClick, RightClick, MiddleClick, BackClick, ForwardClick, Scroll{Up,Down,Left,Right}
+ * A trailing ":up" binds the button's release.
  * @param {string} binding
  * @returns {ParsedMouse}
  * @throws {Error} if mouse binding is invalid
@@ -143,7 +165,8 @@ function parseMouse(binding) {
     throw new Error(`Invalid mouse binding: ${binding}`)
   }
 
-  const parts = binding.toLowerCase().split('+').map(p => p.trim()).filter(Boolean)
+  const { body, release } = splitRelease(binding.toLowerCase())
+  const parts = body.split('+').map(p => p.trim()).filter(Boolean)
   if (parts.length === 0) {
     throw new Error(`Empty mouse binding: "${binding}"`)
   }
@@ -158,21 +181,48 @@ function parseMouse(binding) {
     throw new Error(`Mouse binding has multiple buttons: "${binding}"`)
   }
   if (!VALID_MOUSE.has(btn)) {
-    throw new Error(`Unknown mouse button "${btn}" in binding "${binding}". Valid: Click, RightClick, MiddleClick`)
+    throw new Error(`Unknown mouse button "${btn}" in binding "${binding}". Valid: Click, RightClick, MiddleClick, BackClick, ForwardClick, ScrollUp, ScrollDown, ScrollLeft, ScrollRight`)
+  }
+
+  if (release && btn.startsWith('scroll')) {
+    throw new Error(`Scroll has no release: "${binding}"`)
   }
 
   let button = 0 // left
   if (btn === 'rightclick' || btn === 'right') button = 2
   else if (btn === 'middleclick' || btn === 'middle') button = 1
-  else if (btn === 'scrollup') button = 3
-  else if (btn === 'scrolldown') button = 4
-  else if (btn === 'scrollleft') button = 5
-  else if (btn === 'scrollright') button = 6
+  else if (btn === 'backclick' || btn === 'back') button = 3
+  else if (btn === 'forwardclick' || btn === 'forward') button = 4
+  else if (btn === 'scrollup') button = 5
+  else if (btn === 'scrolldown') button = 6
+  else if (btn === 'scrollleft') button = 7
+  else if (btn === 'scrollright') button = 8
 
-  return { mods, button }
+  return { mods, button, release }
 }
 
-const BUTTON_NAMES = ['click', 'middle', 'right', 'scrollup', 'scrolldown', 'scrollleft', 'scrollright']
+// Indexed by parseMouse's button; the first five line up with MouseEvent.button
+const BUTTON_NAMES = ['click', 'middle', 'right', 'back', 'forward', 'scrollup', 'scrolldown', 'scrollleft', 'scrollright']
+const POINTER_BUTTON_COUNT = 5
+
+/**
+ * Back (3) and forward (4) buttons, which browsers bind to history navigation
+ * @param {number} button
+ * @returns {boolean}
+ */
+function isSideButton(button) {
+  return button === 3 || button === 4
+}
+
+/**
+ * Binding name for a MouseEvent.button value, null for buttons with no name
+ * @param {number} button
+ * @returns {string | null}
+ */
+function pointerButtonName(button) {
+  if (!Number.isInteger(button) || button < 0 || button >= POINTER_BUTTON_COUNT) return null
+  return BUTTON_NAMES[button] ?? null
+}
 
 /**
  * Normalize modifiers to canonical prefix (e.g., "ctrl+alt+")
@@ -194,28 +244,38 @@ function modsToPrefix(mods) {
  * @returns {string}
  */
 function keyToLookup(parsed) {
-  return `${modsToPrefix(parsed.mods)}${parsed.key}`
+  return `${modsToPrefix(parsed.mods)}${parsed.key}${parsed.release ? RELEASE_SUFFIX : ''}`
 }
 
 /**
- * Convert keyboard event to lookup keys (returns multiple for key/code variants)
- * @param {KeyboardEvent} event
- * @returns {string[]}
+ * Modifier prefix of an event
+ * @param {KeyboardEvent | MouseEvent} event
+ * @returns {string}
  */
-function eventToKeyLookups(event) {
-  const prefix = modsToPrefix({
+function eventPrefix(event) {
+  return modsToPrefix({
     ctrl: event.ctrlKey,
     alt: event.altKey,
     shift: event.shiftKey,
     meta: event.metaKey
   })
+}
+
+/**
+ * Convert keyboard event to lookup keys (returns multiple for key/code variants)
+ * @param {KeyboardEvent} event
+ * @param {string} [prefix] - Modifier prefix to use instead of the event's own
+ * @param {string} [suffix] - Appended to every lookup (e.g. ":up")
+ * @returns {string[]}
+ */
+function eventToKeyLookups(event, prefix = eventPrefix(event), suffix = '') {
   const key = event.key.toLowerCase()
   const code = event.code.toLowerCase()
   const codeKey = code.startsWith('key') ? code.slice(3) : null
 
-  const lookups = [`${prefix}${key}`]
-  if (code !== key) lookups.push(`${prefix}${code}`)
-  if (codeKey && codeKey !== key) lookups.push(`${prefix}${codeKey}`)
+  const lookups = [`${prefix}${key}${suffix}`]
+  if (code !== key) lookups.push(`${prefix}${code}${suffix}`)
+  if (codeKey && codeKey !== key) lookups.push(`${prefix}${codeKey}${suffix}`)
   return lookups
 }
 
@@ -225,22 +285,20 @@ function eventToKeyLookups(event) {
  * @returns {string}
  */
 function mouseToLookup(parsed) {
-  return `${modsToPrefix(parsed.mods)}${BUTTON_NAMES[parsed.button] || 'click'}`
+  return `${modsToPrefix(parsed.mods)}${BUTTON_NAMES[parsed.button]}${parsed.release ? RELEASE_SUFFIX : ''}`
 }
 
 /**
- * Convert mouse event to lookup key
+ * Convert mouse event to lookup key. Null for buttons with no binding name.
  * @param {MouseEvent} event
- * @returns {string}
+ * @param {string} [prefix] - Modifier prefix to use instead of the event's own
+ * @param {string} [suffix] - Appended to the lookup (e.g. ":up")
+ * @returns {string | null}
  */
-function eventToMouseLookup(event) {
-  const prefix = modsToPrefix({
-    ctrl: event.ctrlKey,
-    alt: event.altKey,
-    shift: event.shiftKey,
-    meta: event.metaKey
-  })
-  return `${prefix}${BUTTON_NAMES[event.button] || 'click'}`
+function eventToMouseLookup(event, prefix = eventPrefix(event), suffix = '') {
+  const name = pointerButtonName(event.button)
+  if (!name) return null
+  return `${prefix}${name}${suffix}`
 }
 
 /**
@@ -322,8 +380,8 @@ function isActive(command, context) {
  *   id: string           - unique identifier
  *   label: string        - display name
  *   category?: string    - group for command palette
- *   keys?: string[]      - keyboard triggers (e.g., ['$mod+k', 'Escape'])
- *   mouse?: string[]     - mouse triggers (e.g., ['$mod+Click', 'MiddleClick'])
+ *   keys?: string[]      - keyboard triggers (e.g., ['$mod+k', 'Escape']); "k:up" binds the release
+ *   mouse?: string[]     - mouse triggers (e.g., ['$mod+Click', 'MiddleClick', 'Back:up'])
  *   when?: ctx => bool   - activation condition
  *   execute: ctx => any  - action (return false to propagate)
  *   hidden?: bool        - hide from search
@@ -376,19 +434,69 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     return false
   }
 
+  /**
+   * A held input. `prefix` is the modifier state at press time, which release
+   * bindings match against; `fired` holds the commands whose press executed.
+   * @typedef {{ prefix: string, fired: Set<Command> }} Press
+   */
+  /** @type {Map<string, Press>} */
+  const keyPresses = new Map()
+  /** @type {Map<number, Press>} */
+  const mousePresses = new Map()
+  /** Side buttons whose press or release was consumed; their auxclick is cancelled too */
+  /** @type {Set<number>} */
+  const swallowAux = new Set()
+
+  /** @param {Element | null} tgt */
+  function overlayOpen(tgt) {
+    return !!(tgt?.matches?.('keybinds-command-palette[open]') || tgt?.matches?.('keybinds-settings[open]'))
+  }
+
+  /**
+   * Run a release's candidates. Commands whose own press fired always run (a
+   * hold can't be left open); the rest run subject to the usual checks until one consumes.
+   * @param {Command[]} candidates
+   * @param {Press} press
+   * @param {KeyboardEvent | MouseEvent} event
+   * @param {boolean} blocked
+   * @param {boolean} inInput
+   * @returns {boolean} whether any command consumed the release
+   */
+  function runRelease(candidates, press, event, blocked, inInput) {
+    const context = getContext()
+    let consumed = false
+    for (const cmd of candidates) {
+      if (press.fired.has(cmd)) {
+        if (tryExecute(cmd, context, event)) consumed = true
+        continue
+      }
+      if (consumed || blocked) continue
+      if (inInput && !cmd.captureInput) continue
+      if (!isActive(cmd, context)) continue
+      if (tryExecute(cmd, context, event)) consumed = true
+    }
+    return consumed
+  }
+
   /** @param {Event} e */
   function handleKeyDown(e) {
     const event = /** @type {KeyboardEvent} */ (e)
     const tgt = /** @type {Element | null} */ (event.target)
 
     // Don't fire keybinds while the command palette or settings panel is open
-    if (tgt?.matches?.('keybinds-command-palette[open]')) return
-    if (tgt?.matches?.('keybinds-settings[open]')) return
+    if (overlayOpen(tgt)) return
 
     // Don't capture when typing in inputs (unless command explicitly allows it)
     const inInput = tgt?.tagName === 'INPUT' ||
                     tgt?.tagName === 'TEXTAREA' ||
                     (tgt instanceof HTMLElement && tgt.isContentEditable)
+
+    const id = event.code || event.key
+    let press = keyPresses.get(id)
+    if (!press || !event.repeat) {
+      press = { prefix: eventPrefix(event), fired: new Set() }
+      keyPresses.set(id, press)
+    }
 
     // O(1) lookup - try all key variants (key, code, codeKey)
     const lookups = eventToKeyLookups(event)
@@ -404,8 +512,34 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     for (const cmd of candidates) {
       if (inInput && !cmd.captureInput) continue
       if (!isActive(cmd, context)) continue
-      if (tryExecute(cmd, context, event)) return
+      if (tryExecute(cmd, context, event)) {
+        press.fired.add(cmd)
+        return
+      }
     }
+  }
+
+  /** @param {Event} e */
+  function handleKeyUp(e) {
+    const event = /** @type {KeyboardEvent} */ (e)
+    const id = event.code || event.key
+    const press = keyPresses.get(id)
+    if (!press) return
+    keyPresses.delete(id)
+
+    const tgt = /** @type {Element | null} */ (event.target)
+    const inInput = tgt?.tagName === 'INPUT' ||
+                    tgt?.tagName === 'TEXTAREA' ||
+                    (tgt instanceof HTMLElement && tgt.isContentEditable)
+
+    /** @type {Command[] | undefined} */
+    let candidates
+    for (const l of eventToKeyLookups(event, press.prefix, RELEASE_SUFFIX)) {
+      candidates = lookup.keys.get(l)
+      if (candidates) break
+    }
+    if (!candidates) return
+    runRelease(candidates, press, event, overlayOpen(tgt), inInput)
   }
 
   /** @param {Event} e */
@@ -413,19 +547,57 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     const event = /** @type {MouseEvent} */ (e)
 
     // Don't fire keybinds while the command palette or settings panel is open
-    const tgt = /** @type {Element | null} */ (event.target)
-    if (tgt?.matches?.('keybinds-command-palette[open]')) return
-    if (tgt?.matches?.('keybinds-settings[open]')) return
+    if (overlayOpen(/** @type {Element | null} */ (event.target))) return
+
+    const lookupKey = eventToMouseLookup(event)
+    if (!lookupKey) return
+
+    const press = { prefix: eventPrefix(event), fired: new Set() }
+    mousePresses.set(event.button, press)
+    swallowAux.delete(event.button)
 
     // O(1) lookup
-    const candidates = lookup.mouse.get(eventToMouseLookup(event))
+    const candidates = lookup.mouse.get(lookupKey)
     if (!candidates) return
 
     const context = getContext()
     for (const cmd of candidates) {
       if (!isActive(cmd, context)) continue
-      if (tryExecute(cmd, context, event)) return
+      if (tryExecute(cmd, context, event)) {
+        press.fired.add(cmd)
+        if (isSideButton(event.button)) swallowAux.add(event.button)
+        return
+      }
     }
+  }
+
+  /** @param {Event} e */
+  function handleMouseUp(e) {
+    const event = /** @type {MouseEvent} */ (e)
+    const press = mousePresses.get(event.button)
+    if (!press) return
+    mousePresses.delete(event.button)
+
+    let consumed = false
+    const lookupKey = eventToMouseLookup(event, press.prefix, RELEASE_SUFFIX)
+    const candidates = lookupKey ? lookup.mouse.get(lookupKey) : undefined
+    if (candidates) {
+      const tgt = /** @type {Element | null} */ (event.target)
+      consumed = runRelease(candidates, press, event, overlayOpen(tgt), false)
+    }
+
+    // Browsers navigate on a side button's mouseup/auxclick, so cancel both while bound
+    if (isSideButton(event.button) && (consumed || press.fired.size > 0)) {
+      event.preventDefault()
+      swallowAux.add(event.button)
+    }
+  }
+
+  /** @param {Event} e */
+  function handleAuxClick(e) {
+    const event = /** @type {MouseEvent} */ (e)
+    if (!swallowAux.delete(event.button)) return
+    event.preventDefault()
   }
 
   // Cooldown-based wheel dispatch: fires immediately, then suppresses for 100ms
@@ -464,14 +636,23 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   }
 
   target.addEventListener('keydown', handleKeyDown)
+  target.addEventListener('keyup', handleKeyUp)
   target.addEventListener('mousedown', handleMouseDown)
+  target.addEventListener('mouseup', handleMouseUp)
+  target.addEventListener('auxclick', handleAuxClick)
   target.addEventListener('wheel', handleWheel, { passive: false })
 
   // Return cleanup function
   return () => {
     target.removeEventListener('keydown', handleKeyDown)
+    target.removeEventListener('keyup', handleKeyUp)
     target.removeEventListener('mousedown', handleMouseDown)
+    target.removeEventListener('mouseup', handleMouseUp)
+    target.removeEventListener('auxclick', handleAuxClick)
     target.removeEventListener('wheel', handleWheel)
+    keyPresses.clear()
+    mousePresses.clear()
+    swallowAux.clear()
   }
 }
 
@@ -724,7 +905,21 @@ function formatKeyPart(part) {
  * @returns {string[]}
  */
 export function formatKeyParts(key) {
-  return key.split('+').map(formatKeyPart)
+  return formatWithRelease(key, formatKeyPart)
+}
+
+/**
+ * Format a binding's parts, adding a trailing "Release" part for ":up" bindings
+ * @param {string} binding
+ * @param {(part: string) => string} formatPart
+ * @returns {string[]}
+ */
+function formatWithRelease(binding, formatPart) {
+  const { body, release } = splitRelease(binding.toLowerCase())
+  const source = release ? binding.trim().slice(0, body.length) : binding
+  const parts = source.split('+').map(formatPart)
+  if (release) parts.push('Release')
+  return parts
 }
 
 /**
@@ -979,6 +1174,7 @@ export function fuzzyMatcher(query, text) {
  */
 export function eventToBindingString(event) {
   const key = event.key.toLowerCase()
+  const suffix = event.type === 'keyup' ? RELEASE_SUFFIX : ''
 
   // Ignore bare modifier presses
   if (['shift', 'control', 'alt', 'meta'].includes(key)) return null
@@ -1004,7 +1200,7 @@ export function eventToBindingString(event) {
   if (event.shiftKey) parts.push('shift')
   parts.push(normalizedKey)
 
-  return parts.join('+')
+  return parts.join('+') + suffix
 }
 
 /**
@@ -1025,8 +1221,10 @@ export function eventToMouseBindingString(event) {
     else if (we.deltaX > 0) buttonName = 'scrollright'
     else return null
   } else {
-    buttonName = BUTTON_NAMES[event.button]
-    if (!buttonName) return null
+    const name = pointerButtonName(event.button)
+    if (!name) return null
+    buttonName = name
+    if (event.type === 'mouseup') buttonName += RELEASE_SUFFIX
   }
 
   const parts = []
@@ -1747,6 +1945,8 @@ function formatMousePart(part) {
   if (p === 'click' || p === 'leftclick' || p === 'left') return 'Click'
   if (p === 'middleclick' || p === 'middle') return 'Middle'
   if (p === 'rightclick' || p === 'right') return 'Right'
+  if (p === 'backclick' || p === 'back') return 'Back'
+  if (p === 'forwardclick' || p === 'forward') return 'Forward'
   if (p === 'scrollup') return 'Scroll \u2191'
   if (p === 'scrolldown') return 'Scroll \u2193'
   if (p === 'scrollleft') return 'Scroll \u2190'
@@ -1760,7 +1960,7 @@ function formatMousePart(part) {
  * @returns {string[]}
  */
 export function formatMouseParts(binding) {
-  return binding.split('+').map(formatMousePart)
+  return formatWithRelease(binding, formatMousePart)
 }
 
 /**

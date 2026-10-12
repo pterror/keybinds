@@ -1250,3 +1250,342 @@ describe('ContextMenu (scored, searchable)', () => {
     cleanup(el)
   })
 })
+
+// --- Side buttons, press/release ---
+
+/** @param {string} type @param {number} button @param {MouseEventInit} [init] */
+const mouse = (type, button, init = {}) => new MouseEvent(type, { button, cancelable: true, ...init })
+/** @param {string} type @param {string} key @param {string} code @param {KeyboardEventInit} [init] */
+const kbd = (type, key, code, init = {}) => new KeyboardEvent(type, { key, code, cancelable: true, bubbles: true, ...init })
+
+describe('side buttons', () => {
+  test('back and forward presses fire their own bindings, not scroll', () => {
+    const back = mock(() => {})
+    const fwd = mock(() => {})
+    const up = mock(() => {})
+    const down = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'b', label: 'B', mouse: ['Back'], execute: back },
+      { id: 'f', label: 'F', mouse: ['ForwardClick'], execute: fwd },
+      { id: 'u', label: 'U', mouse: ['scrollup'], execute: up },
+      { id: 'd', label: 'D', mouse: ['scrolldown'], execute: down },
+    ], undefined, { target })
+
+    target.dispatchEvent(mouse('mousedown', 3))
+    expect(back).toHaveBeenCalledTimes(1)
+    target.dispatchEvent(mouse('mousedown', 4))
+    expect(fwd).toHaveBeenCalledTimes(1)
+    expect(up).not.toHaveBeenCalled()
+    expect(down).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  test('scroll bindings do not fire on side buttons when only scroll is bound', () => {
+    const up = mock(() => {})
+    const down = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'u', label: 'U', mouse: ['scrollup'], execute: up },
+      { id: 'd', label: 'D', mouse: ['scrolldown'], execute: down },
+    ], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 3))
+    target.dispatchEvent(mouse('mousedown', 4))
+    expect(up).not.toHaveBeenCalled()
+    expect(down).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  test('buttons beyond the named five are ignored, not treated as click', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'c', label: 'C', mouse: ['Click'], execute: fn }], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 5))
+    target.dispatchEvent(mouse('mousedown', 7))
+    expect(fn).not.toHaveBeenCalled()
+    target.dispatchEvent(mouse('mousedown', 0))
+    expect(fn).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('mousedown, mouseup and auxclick are cancelled while the press fired', () => {
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'b', label: 'B', mouse: ['Back'], execute: () => {} }], undefined, { target })
+    const down = mouse('mousedown', 3)
+    const up = mouse('mouseup', 3)
+    const aux = mouse('auxclick', 3)
+    target.dispatchEvent(down)
+    target.dispatchEvent(up)
+    target.dispatchEvent(aux)
+    expect(down.defaultPrevented).toBe(true)
+    expect(up.defaultPrevented).toBe(true)
+    expect(aux.defaultPrevented).toBe(true)
+    cleanup()
+  })
+
+  test('side buttons are left alone when nothing fired', () => {
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'b', label: 'B', mouse: ['Back'], when: () => false, execute: () => {} },
+    ], undefined, { target })
+    const down = mouse('mousedown', 3)
+    const up = mouse('mouseup', 3)
+    const aux = mouse('auxclick', 3)
+    target.dispatchEvent(down)
+    target.dispatchEvent(up)
+    target.dispatchEvent(aux)
+    expect(down.defaultPrevented).toBe(false)
+    expect(up.defaultPrevented).toBe(false)
+    expect(aux.defaultPrevented).toBe(false)
+    cleanup()
+  })
+
+  test('a release-only side binding cancels its mouseup and auxclick', () => {
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'b', label: 'B', mouse: ['Forward:up'], execute: () => {} }], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 4))
+    const up = mouse('mouseup', 4)
+    const aux = mouse('auxclick', 4)
+    target.dispatchEvent(up)
+    target.dispatchEvent(aux)
+    expect(up.defaultPrevented).toBe(true)
+    expect(aux.defaultPrevented).toBe(true)
+    cleanup()
+  })
+
+  test('a stale auxclick block does not leak into the next press', () => {
+    const target = document.createElement('div')
+    let active = true
+    const cleanup = keybinds([{ id: 'b', label: 'B', mouse: ['Back'], when: () => active, execute: () => {} }], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 3))
+    target.dispatchEvent(mouse('mouseup', 3))
+    active = false
+    target.dispatchEvent(mouse('mousedown', 3))
+    const aux = mouse('auxclick', 3)
+    target.dispatchEvent(aux)
+    expect(aux.defaultPrevented).toBe(false)
+    cleanup()
+  })
+
+  test('parse, format and conflict handle back/forward', () => {
+    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['Back', 'forward', 'ctrl+BackClick'], execute: () => {} }])).not.toThrow()
+    expect(formatMouseParts('Back')).toEqual(['Back'])
+    expect(formatMouseParts('ctrl+ForwardClick')).toEqual(['Ctrl', 'Forward'])
+    const schema = { s: { label: 'S', mouse: ['back'] } }
+    expect(findConflict(schema, 'BackClick', 'mouse')?.commandId).toBe('s')
+    expect(findConflict(schema, 'scrollup', 'mouse')).toBeNull()
+    expect(findConflict(schema, 'forward', 'mouse')).toBeNull()
+  })
+
+  test('eventToMouseBindingString names side buttons and rejects unnamed ones', () => {
+    expect(eventToMouseBindingString(mouse('mousedown', 3))).toBe('back')
+    expect(eventToMouseBindingString(mouse('mousedown', 4))).toBe('forward')
+    expect(eventToMouseBindingString(mouse('mousedown', 5))).toBeNull()
+  })
+})
+
+describe('press and release bindings', () => {
+  test('key release fires on keyup after a press', () => {
+    const up = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'k', label: 'K', keys: ['k:up'], execute: up }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    expect(up).not.toHaveBeenCalled()
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(up).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('press and release are separate bindings on separate commands', () => {
+    const open = mock(() => {})
+    const close = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'o', label: 'O', mouse: ['MiddleClick'], execute: open },
+      { id: 'c', label: 'C', mouse: ['MiddleClick:up'], execute: close },
+    ], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 1))
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(close).not.toHaveBeenCalled()
+    target.dispatchEvent(mouse('mouseup', 1))
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(close).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('a release with no seen press does not fire', () => {
+    const k = mock(() => {})
+    const m = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'k', label: 'K', keys: ['k:up'], execute: k },
+      { id: 'm', label: 'M', mouse: ['middle:up'], execute: m },
+    ], undefined, { target })
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    target.dispatchEvent(mouse('mouseup', 1))
+    expect(k).not.toHaveBeenCalled()
+    expect(m).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  test('a release fires once per press', () => {
+    const up = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'k', label: 'K', keys: ['k:up'], execute: up }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(up).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('release matches the modifiers held at press time', () => {
+    const up = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'k', label: 'K', keys: ['ctrl+k:up'], execute: up }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK', { ctrlKey: true }))
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK')) // ctrl already let go
+    expect(up).toHaveBeenCalledTimes(1)
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK', { ctrlKey: true }))
+    expect(up).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('a release-only command checks its own when at release time', () => {
+    const up = mock(() => {})
+    let on = true
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'k', label: 'K', keys: ['k:up'], when: () => on, execute: up }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    on = false
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(up).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  test('a command whose press fired always gets its release, even if when went false', () => {
+    const calls = /** @type {string[]} */ ([])
+    let on = true
+    const target = document.createElement('div')
+    const cleanup = keybinds([{
+      id: 'hold', label: 'Hold', keys: ['space', 'space:up'], mouse: ['middle', 'middle:up'],
+      when: () => on,
+      execute: (_ctx, e) => { calls.push(/** @type {Event} */ (e).type) },
+    }], undefined, { target })
+
+    target.dispatchEvent(kbd('keydown', ' ', 'Space'))
+    on = false
+    target.dispatchEvent(kbd('keyup', ' ', 'Space'))
+    on = true
+    target.dispatchEvent(mouse('mousedown', 1))
+    on = false
+    target.dispatchEvent(mouse('mouseup', 1))
+    expect(calls).toEqual(['keydown', 'keyup', 'mousedown', 'mouseup'])
+    cleanup()
+  })
+
+  test('the guarantee holds even when another command consumes the release first', () => {
+    const calls = /** @type {string[]} */ ([])
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'other', label: 'Other', keys: ['k:up'], execute: () => { calls.push('other') } },
+      { id: 'hold', label: 'Hold', keys: ['k', 'k:up'], execute: (_c, e) => { calls.push(`hold:${/** @type {Event} */ (e).type}`) } },
+    ], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(calls).toEqual(['hold:keydown', 'other', 'hold:keyup'])
+    cleanup()
+  })
+
+  test('a held key repeating does not reset which commands fired', () => {
+    const calls = /** @type {string[]} */ ([])
+    let on = true
+    const target = document.createElement('div')
+    const cleanup = keybinds([{
+      id: 'hold', label: 'Hold', keys: ['k', 'k:up'], when: () => on,
+      execute: (_c, e) => { calls.push(/** @type {Event} */ (e).type) },
+    }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    on = false
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK', { repeat: true }))
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(calls).toEqual(['keydown', 'keyup'])
+    cleanup()
+  })
+
+  test('release skips inputs unless captureInput, but a fired press still releases', () => {
+    const plain = mock(() => {})
+    const held = /** @type {string[]} */ ([])
+    const input = document.createElement('input')
+    const wrap = document.createElement('div')
+    wrap.appendChild(input)
+    const cleanup = keybinds([
+      { id: 'plain', label: 'P', keys: ['j:up'], execute: plain },
+      { id: 'hold', label: 'H', keys: ['k', 'k:up'], captureInput: true, execute: (_c, e) => { held.push(/** @type {Event} */ (e).type) } },
+    ], undefined, { target: wrap })
+    input.dispatchEvent(kbd('keydown', 'j', 'KeyJ'))
+    input.dispatchEvent(kbd('keyup', 'j', 'KeyJ'))
+    expect(plain).not.toHaveBeenCalled()
+    input.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    input.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(held).toEqual(['keydown', 'keyup'])
+    cleanup()
+  })
+
+  test('press bindings are unaffected by an added release binding', () => {
+    const down = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'k', label: 'K', keys: ['k', 'k:up'], execute: down }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    expect(down).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('cleanup removes release listeners', () => {
+    const up = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'k', label: 'K', keys: ['k:up'], execute: up }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    cleanup()
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(up).not.toHaveBeenCalled()
+  })
+
+  test('validation accepts :up and rejects scroll release and empty release', () => {
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+k:up', 'Escape:UP'], mouse: ['middle:up'], execute: () => {} }])).not.toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['scrollup:up'], execute: () => {} }])).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: [':up'], execute: () => {} }])).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+:up'], execute: () => {} }])).toThrow()
+  })
+
+  test('format adds a Release part', () => {
+    expect(formatKeyParts('ctrl+k:up')).toEqual(['Ctrl', 'K', 'Release'])
+    expect(formatMouseParts('MiddleClick:up')).toEqual(['Middle', 'Release'])
+  })
+
+  test('conflicts treat press and release as different inputs', () => {
+    const schema = { s: { label: 'S', keys: ['k'], mouse: ['middle'] } }
+    expect(findConflict(schema, 'k:up', 'keys')).toBeNull()
+    expect(findConflict(schema, 'middle:up', 'mouse')).toBeNull()
+    expect(findConflict(schema, 'K', 'keys')?.commandId).toBe('s')
+    expect(findConflict({ s: { label: 'S', keys: ['k:up'] } }, 'K:UP', 'keys')?.commandId).toBe('s')
+  })
+
+  test('event to binding string gives :up for keyup and mouseup', () => {
+    expect(eventToBindingString(kbd('keyup', 'k', 'KeyK', { ctrlKey: true }))).toBe('$mod+k:up')
+    expect(eventToBindingString(kbd('keydown', 'k', 'KeyK'))).toBe('k')
+    expect(eventToMouseBindingString(mouse('mouseup', 1))).toBe('middle:up')
+    expect(eventToMouseBindingString(mouse('mouseup', 3))).toBe('back:up')
+    expect(eventToMouseBindingString(mouse('mousedown', 1))).toBe('middle')
+  })
+
+  test('settings store round-trips release bindings', () => {
+    const schema = { open: { label: 'Open', mouse: ['middle'] }, close: { label: 'Close', mouse: ['middle:up'] } }
+    const store = new BindingsStore(schema, 'test:release-bindings')
+    store.save({ close: { mouse: ['back:up'] } })
+    const reloaded = new BindingsStore(schema, 'test:release-bindings')
+    expect(reloaded.get()['close']?.mouse).toEqual(['back:up'])
+    expect(reloaded.get()['open']?.mouse).toEqual(['middle'])
+  })
+})

@@ -41,7 +41,26 @@ keys: ['Backspace', 'Delete']  // Multiple triggers
 mouse: ['$mod+Click']   // Cmd/Ctrl + left click
 mouse: ['MiddleClick']  // Middle mouse button
 mouse: ['RightClick']   // Right click (context menu)
+mouse: ['Back']         // Side button toward the user (BackClick also works)
+mouse: ['Forward']      // Side button away from the user (ForwardClick also works)
 ```
+
+While a command's press on Back or Forward fires, the browser's history navigation for that press is cancelled (mousedown, mouseup and auxclick).
+
+## Press and Release Bindings
+
+A trailing `:up` binds the moment the key or button comes up instead of going down:
+
+```js
+keys: ['Space', 'Space:up']
+mouse: ['MiddleClick', 'MiddleClick:up']
+```
+
+- A release is matched against the modifiers held at press time, so `ctrl+k:up` fires when `k` comes up after a `ctrl+k` press, even if ctrl was let go first.
+- A release only fires for a press this binding set saw, whether or not anything handled that press.
+- A release-only command checks its own `when` at release time. If a command's own press fired, its release fires regardless of `when`, so a hold can't be left open.
+- `execute` receives the `keyup` / `mouseup` event; check `event.type` to tell press from release.
+- Scroll bindings have no release.
 
 ## Scroll/Wheel Bindings
 

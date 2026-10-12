@@ -203,6 +203,9 @@ const binding = eventToMouseBindingString(event)  // e.g. "$mod+click"
 
 // Also works with WheelEvent:
 const scroll = eventToMouseBindingString(wheelEvent)  // e.g. "$mod+scrollup"
+
+// Side buttons are "back" and "forward"; a mouseup / keyup event gives a ":up" binding:
+eventToMouseBindingString(mouseupEvent)  // e.g. "middle:up"
 ```
 
 ---
