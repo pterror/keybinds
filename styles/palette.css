@@ -1,286 +1,448 @@
 /**
- * keybinds - Optional styles for command palette and cheatsheet
- *
- * Import this file for reasonable defaults, or use as a reference
- * for your own styles. All classes follow BEM naming.
+ * keybinds - styles for every component: command palette, cheatsheet, settings (rebinding),
+ * context menus and the radial menu.
  *
  * Usage:
  *   import 'keybinds/styles/palette.css'
  *
- * Or target shadow parts:
- *   keybinds-command-palette::part(input) { ... }
+ * Components are selected by the data-keybinds attribute they set on themselves, so this works
+ * whatever tag names they're registered under.
+ *
+ * Every colour and font comes from a custom property, so a page restyles all of it by setting
+ * these (on :root or on a component):
+ *
+ *   --keybinds-bg          dialog background       (default: the browser's Canvas)
+ *   --keybinds-fg          text                    (default: CanvasText)
+ *   --keybinds-muted       secondary text
+ *   --keybinds-border      borders and dividers
+ *   --keybinds-surface     key caps and buttons
+ *   --keybinds-accent      matches, focus, recording
+ *   --keybinds-accent-soft the active row
+ *   --keybinds-warn        binding conflicts
+ *   --keybinds-backdrop    behind dialogs
+ *   --keybinds-shadow      dialog shadow
+ *   --keybinds-radius      dialog corners
+ *   --keybinds-font, --keybinds-mono
+ *
+ * The defaults follow the page's color-scheme (light or dark) by themselves. Each part can also be
+ * restyled directly: [data-keybinds="command-palette"]::part(input) { ... }
  */
 
+[data-keybinds] {
+  --kb-bg: var(--keybinds-bg, Canvas);
+  --kb-fg: var(--keybinds-fg, CanvasText);
+  --kb-muted: var(--keybinds-muted, color-mix(in srgb, var(--kb-fg) 60%, transparent));
+  --kb-border: var(--keybinds-border, color-mix(in srgb, var(--kb-fg) 16%, transparent));
+  --kb-surface: var(--keybinds-surface, color-mix(in srgb, var(--kb-fg) 7%, var(--kb-bg)));
+  --kb-accent: var(--keybinds-accent, Highlight);
+  --kb-accent-soft: var(--keybinds-accent-soft, color-mix(in srgb, var(--kb-accent) 18%, transparent));
+  --kb-warn: var(--keybinds-warn, #c2410c);
+  --kb-backdrop: var(--keybinds-backdrop, rgb(0 0 0 / 0.45));
+  --kb-shadow: var(--keybinds-shadow, 0 16px 48px rgb(0 0 0 / 0.3));
+  --kb-radius: var(--keybinds-radius, 10px);
+  --kb-font: var(--keybinds-font, system-ui, sans-serif);
+  --kb-mono: var(--keybinds-mono, ui-monospace, monospace);
+}
+
 /* ========================================
-   Command Palette
+   Shared: overlays, dialogs, key caps
    ======================================== */
 
-keybinds-command-palette {
+[data-keybinds="command-palette"],
+[data-keybinds="cheatsheet"],
+[data-keybinds="settings"] {
   position: fixed;
   inset: 0;
   z-index: 9999;
 }
 
-keybinds-command-palette::part(backdrop) {
+[data-keybinds="command-palette"]::part(backdrop),
+[data-keybinds="cheatsheet"]::part(backdrop),
+[data-keybinds="settings"]::part(backdrop) {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--kb-backdrop);
 }
 
-keybinds-command-palette::part(dialog) {
+[data-keybinds="command-palette"]::part(dialog),
+[data-keybinds="cheatsheet"]::part(dialog),
+[data-keybinds="settings"]::part(dialog) {
   position: fixed;
-  top: 20%;
   left: 50%;
   transform: translateX(-50%);
-  width: 90%;
-  max-width: 500px;
-  max-height: 60vh;
-  display: flex;
-  flex-direction: column;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  background: var(--kb-bg);
+  color: var(--kb-fg);
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-radius);
+  box-shadow: var(--kb-shadow);
+  font: 14px/1.4 var(--kb-font);
 }
 
-keybinds-command-palette::part(input) {
+[data-keybinds]::part(item-key),
+[data-keybinds="settings"]::part(binding-key) {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  font: 12px/1.5 var(--kb-mono);
+  text-align: center;
+  color: var(--kb-muted);
+  background: var(--kb-surface);
+  border: 1px solid var(--kb-border);
+  border-radius: 4px;
+}
+
+[data-keybinds]::part(item-disabled) {
+  opacity: 0.4;
+}
+
+/* ========================================
+   Command palette
+   ======================================== */
+
+[data-keybinds="command-palette"]::part(dialog) {
+  top: 14vh;
+  width: min(560px, calc(100vw - 24px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+[data-keybinds="command-palette"]::part(input) {
   width: 100%;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border: none;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--kb-border);
   background: transparent;
-  color: #fff;
-  font-size: 16px;
+  color: var(--kb-fg);
+  font: inherit;
+  font-size: 15px;
   outline: none;
 }
 
-keybinds-command-palette::part(input)::placeholder {
-  color: #666;
-}
-
-keybinds-command-palette::part(list) {
-  flex: 1;
-  overflow-y: auto;
-  margin: 0;
-  padding: 8px 0;
+[data-keybinds="command-palette"]::part(list) {
   list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
 }
 
-keybinds-command-palette::part(item) {
+[data-keybinds="command-palette"]::part(item) {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
+  gap: 10px;
+  padding: 7px 16px;
   cursor: pointer;
-  color: #ccc;
 }
 
-keybinds-command-palette::part(item-active) {
-  background: #333;
-  color: #fff;
+[data-keybinds="command-palette"]::part(item-active) {
+  background: var(--kb-accent-soft);
 }
 
-keybinds-command-palette::part(item-disabled) {
-  opacity: 0.4;
-  cursor: not-allowed;
+[data-keybinds="command-palette"]::part(item-category) {
+  min-width: 6em;
+  font-size: 12px;
+  color: var(--kb-muted);
 }
 
-keybinds-command-palette::part(item-label) {
+[data-keybinds="command-palette"]::part(item-label) {
   flex: 1;
 }
 
-keybinds-command-palette::part(item-label-match) {
-  background: transparent;
-  color: #fff;
+[data-keybinds="command-palette"]::part(item-label-match) {
+  color: var(--kb-accent);
+  background: none;
   font-weight: 600;
 }
 
-keybinds-command-palette::part(item-category) {
+[data-keybinds="command-palette"]::part(item-description) {
   font-size: 12px;
-  color: #666;
+  color: var(--kb-muted);
 }
 
-keybinds-command-palette::part(item-keys) {
+[data-keybinds="command-palette"]::part(item-keys) {
   display: flex;
-  gap: 2px;
+  gap: 4px;
 }
 
-keybinds-command-palette::part(item-key) {
-  font-family: monospace;
-  font-size: 11px;
-  padding: 2px 5px;
-  background: #222;
-  border: 1px solid #444;
-  border-radius: 3px;
-  color: #888;
-}
-
-keybinds-command-palette::part(empty) {
-  padding: 16px;
-  text-align: center;
-  color: #666;
+[data-keybinds="command-palette"]::part(empty) {
+  padding: 14px 16px;
+  color: var(--kb-muted);
 }
 
 /* ========================================
-   Keybind Cheatsheet
+   Cheatsheet
    ======================================== */
 
-keybinds-cheatsheet {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-}
-
-keybinds-cheatsheet::part(backdrop) {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-keybinds-cheatsheet::part(dialog) {
-  position: fixed;
+[data-keybinds="cheatsheet"]::part(dialog) {
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
-  gap: 24px;
-  padding: 16px 24px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-  max-width: 90vw;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  gap: 20px 28px;
+  padding: 16px 22px;
+  max-width: calc(100vw - 24px);
+  max-height: 70vh;
+  overflow: auto;
 }
 
-keybinds-cheatsheet::part(group) {
-  min-width: 140px;
+[data-keybinds="cheatsheet"]::part(group) {
+  min-width: 180px;
 }
 
-keybinds-cheatsheet::part(group-title) {
-  font-size: 11px;
+[data-keybinds="cheatsheet"]::part(group-title),
+[data-keybinds="settings"]::part(group-title) {
+  margin: 0 0 6px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #666;
-  margin-bottom: 8px;
+  text-transform: uppercase;
+  color: var(--kb-muted);
 }
 
-keybinds-cheatsheet::part(list) {
+[data-keybinds="cheatsheet"]::part(list) {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+[data-keybinds="cheatsheet"]::part(item) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+[data-keybinds="cheatsheet"]::part(item-keys),
+[data-keybinds="cheatsheet"]::part(item-binding) {
+  display: flex;
+  gap: 4px;
+}
+
+/* ========================================
+   Settings (rebinding)
+   ======================================== */
+
+[data-keybinds="settings"]::part(dialog) {
+  top: 6vh;
+  width: min(640px, calc(100vw - 24px));
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 0 0 12px;
+}
+
+[data-keybinds="settings"]::part(header) {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--kb-bg);
+  border-bottom: 1px solid var(--kb-border);
+}
+
+[data-keybinds="settings"]::part(title) {
+  font-weight: 600;
+}
+
+[data-keybinds="settings"]::part(group) {
+  padding: 8px 18px 0;
+}
+
+[data-keybinds="settings"]::part(list) {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+[data-keybinds="settings"]::part(item) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--kb-border);
+}
+
+[data-keybinds="settings"]::part(item-label) {
+  flex: 1;
+  min-width: 10em;
+}
+
+[data-keybinds="settings"]::part(item-bindings) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-keybinds="settings"]::part(binding) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+[data-keybinds="settings"]::part(binding-keys) {
+  display: inline-flex;
+  gap: 3px;
+  cursor: pointer;
+}
+
+[data-keybinds="settings"]::part(binding-recording) {
+  box-shadow: 0 0 0 2px var(--kb-accent);
+}
+
+[data-keybinds="settings"]::part(recording-overlay) {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--kb-accent);
+}
+
+[data-keybinds="settings"]::part(binding-remove),
+[data-keybinds="settings"]::part(item-add),
+[data-keybinds="settings"]::part(add-key),
+[data-keybinds="settings"]::part(add-mouse),
+[data-keybinds="settings"]::part(item-reset),
+[data-keybinds="settings"]::part(reset-all),
+[data-keybinds="settings"]::part(conflict-accept),
+[data-keybinds="settings"]::part(conflict-cancel),
+[data-keybinds="settings"]::part(recording-release),
+[data-keybinds="settings"]::part(binding-release) {
+  padding: 2px 8px;
+  font: 12px var(--kb-font);
+  color: var(--kb-fg);
+  background: var(--kb-surface);
+  border: 1px solid var(--kb-border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+[data-keybinds="settings"]::part(binding-remove) {
+  padding: 0 6px;
+  color: var(--kb-muted);
+}
+
+[data-keybinds="settings"]::part(recording-release-on),
+[data-keybinds="settings"]::part(binding-release-on) {
+  background: var(--kb-accent-soft);
+  border-color: var(--kb-accent);
+}
+
+[data-keybinds="settings"]::part(conflict) {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--kb-warn);
+}
+
+/* ========================================
+   Context menus (basic and scored)
+   ======================================== */
+
+[data-keybinds="basic-context-menu"],
+[data-keybinds="context-menu"] {
+  position: fixed;
+  z-index: 10000;
+}
+
+[data-keybinds="basic-context-menu"]::part(backdrop),
+[data-keybinds="context-menu"]::part(backdrop) {
+  position: fixed;
+  inset: 0;
+}
+
+/* The basic menu's list is the box; the scored menu's box holds a search field and the list */
+[data-keybinds="basic-context-menu"]::part(list),
+[data-keybinds="context-menu"]::part(context-menu) {
+  min-width: 200px;
+  max-width: 320px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--kb-bg);
+  color: var(--kb-fg);
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  box-shadow: var(--kb-shadow);
+  font: 14px/1.4 var(--kb-font);
+  outline: none;
+}
+
+[data-keybinds="context-menu"]::part(list) {
   margin: 0;
   padding: 0;
   list-style: none;
+  outline: none;
 }
 
-keybinds-cheatsheet::part(item) {
+[data-keybinds="context-menu"]::part(search) {
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--kb-fg);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--kb-border);
+  outline: none;
+}
+
+[data-keybinds="basic-context-menu"]::part(separator),
+[data-keybinds="context-menu"]::part(separator) {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--kb-border);
+}
+
+[data-keybinds="basic-context-menu"]::part(item),
+[data-keybinds="context-menu"]::part(item) {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 4px 0;
-  font-size: 13px;
-  color: #ccc;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
-keybinds-cheatsheet::part(item-disabled) {
-  opacity: 0.4;
+[data-keybinds="basic-context-menu"]::part(item-active),
+[data-keybinds="context-menu"]::part(item-active) {
+  background: var(--kb-accent-soft);
 }
 
-keybinds-cheatsheet::part(item-label) {
-  white-space: nowrap;
-}
-
-keybinds-cheatsheet::part(item-keys) {
+[data-keybinds="basic-context-menu"]::part(item-keys),
+[data-keybinds="context-menu"]::part(item-keys) {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
-keybinds-cheatsheet::part(item-binding) {
-  display: flex;
-  gap: 2px;
-}
-
-keybinds-cheatsheet::part(item-key) {
-  font-family: monospace;
-  font-size: 11px;
-  padding: 2px 5px;
-  background: #222;
-  border: 1px solid #444;
-  border-radius: 3px;
-  color: #888;
+[data-keybinds="context-menu"]::part(more-row) {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--kb-muted);
 }
 
 /* ========================================
-   Context Menu
+   Radial menu
    ======================================== */
 
-:is(keybinds-basic-context-menu, keybinds-context-menu) {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
+[data-keybinds="radial-menu"] {
+  color: var(--kb-fg);
 }
 
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(backdrop) {
-  position: fixed;
-  inset: 0;
+[data-keybinds="radial-menu"]::part(label) {
+  font-family: var(--kb-font);
 }
 
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(list) {
-  min-width: 160px;
-  margin: 0;
-  padding: 4px 0;
-  list-style: none;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  outline: none;
-}
-
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(separator) {
-  height: 1px;
-  margin: 4px 8px;
-  background: #333;
-}
-
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item) {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 6px 12px;
-  cursor: pointer;
-  color: #ccc;
-  font-size: 13px;
-}
-
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-active) {
-  background: #333;
-  color: #fff;
-}
-
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-disabled) {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-label) {
-  flex: 1;
-  white-space: nowrap;
-}
-
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-keys) {
-  display: flex;
-  gap: 2px;
-}
-
-:is(keybinds-basic-context-menu, keybinds-context-menu)::part(item-key) {
-  font-family: monospace;
-  font-size: 11px;
-  padding: 2px 5px;
-  background: #222;
-  border: 1px solid #444;
-  border-radius: 3px;
-  color: #888;
+[data-keybinds="radial-menu"]::part(spoke) {
+  stroke: var(--kb-fg);
 }

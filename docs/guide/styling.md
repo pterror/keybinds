@@ -4,27 +4,61 @@ Components use Shadow DOM with `::part()` selectors and BEM class names for styl
 
 ## Quick Start
 
-Import the optional stylesheet for reasonable defaults:
+Import the optional stylesheet, which styles every component (palette, cheatsheet, settings, context menus, radial menu):
 
 ```js
 import 'keybinds/styles/palette.css'
 ```
+
+Its colours follow the page's `color-scheme`: with `:root { color-scheme: light dark }` it's light or dark along with the system.
+
+## Theme Variables
+
+Every colour and font in the stylesheet comes from a custom property. Set them on `:root` (or on one component) to match your page:
+
+```css
+:root {
+  --keybinds-bg: #fffaf3;
+  --keybinds-fg: #2b2118;
+  --keybinds-accent: #b4532a;
+  --keybinds-font: 'Inter', sans-serif;
+}
+```
+
+| Variable | Used for | Default |
+|----------|----------|---------|
+| `--keybinds-bg` | Dialog background | `Canvas` |
+| `--keybinds-fg` | Text | `CanvasText` |
+| `--keybinds-muted` | Secondary text | 60% of fg |
+| `--keybinds-border` | Borders, dividers | 16% of fg |
+| `--keybinds-surface` | Key caps, buttons | 7% of fg over bg |
+| `--keybinds-accent` | Matches, recording | `Highlight` |
+| `--keybinds-accent-soft` | Active row | 18% of accent |
+| `--keybinds-warn` | Binding conflicts | `#c2410c` |
+| `--keybinds-backdrop` | Behind dialogs | black at 45% |
+| `--keybinds-shadow` | Dialog shadow | |
+| `--keybinds-radius` | Dialog corners | `10px` |
+| `--keybinds-font`, `--keybinds-mono` | Text, key caps | system fonts |
+
+## Selecting Components
+
+Each component marks itself with `data-keybinds="<kind>"` when it's added to the page: `command-palette`, `cheatsheet`, `settings`, `basic-context-menu`, `context-menu` or `radial-menu`. Select by that rather than by tag name, so styles still apply if the component is registered under another name.
 
 ## Custom Styles with ::part()
 
 Target shadow DOM elements using CSS `::part()`:
 
 ```css
-keybinds-command-palette::part(dialog) {
+[data-keybinds="command-palette"]::part(dialog) {
   background: #fff;
   border-radius: 12px;
 }
 
-keybinds-command-palette::part(input) {
+[data-keybinds="command-palette"]::part(input) {
   font-size: 18px;
 }
 
-keybinds-command-palette::part(item-active) {
+[data-keybinds="command-palette"]::part(item-active) {
   background: #0066cc;
   color: white;
 }
