@@ -1915,3 +1915,52 @@ describe('BasicContextMenu', () => {
     el.remove()
   })
 })
+
+describe('characters and shifted keys', () => {
+  /**
+   * @param {string} binding
+   * @param {KeyboardEventInit} init
+   */
+  function fires(binding, init) {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'x', label: 'X', keys: [binding], execute: fn }], undefined, { target })
+    target.dispatchEvent(new KeyboardEvent('keydown', init))
+    cleanup()
+    return fn.mock.calls.length === 1
+  }
+
+  test('a character binds however it is typed: "?" fires on Shift+/', () => {
+    expect(fires('?', { key: '?', code: 'Slash', shiftKey: true })).toBe(true)
+    expect(fires('!', { key: '!', code: 'Digit1', shiftKey: true })).toBe(true)
+    expect(fires('$mod+?', { key: '?', code: 'Slash', shiftKey: true, ctrlKey: true })).toBe(true)
+  })
+
+  test('"shift+/" and "shift+1" mean the physical keys, so they fire', () => {
+    expect(fires('shift+/', { key: '?', code: 'Slash', shiftKey: true })).toBe(true)
+    expect(fires('shift+1', { key: '!', code: 'Digit1', shiftKey: true })).toBe(true)
+  })
+
+  test('"plus" is the + key', () => {
+    expect(fires('$mod+plus', { key: '+', code: 'Equal', shiftKey: true, ctrlKey: true })).toBe(true)
+  })
+
+  test('Shift still distinguishes letters', () => {
+    expect(fires('a', { key: 'A', code: 'KeyA', shiftKey: true })).toBe(false)
+    expect(fires('shift+a', { key: 'A', code: 'KeyA', shiftKey: true })).toBe(true)
+  })
+
+  test('recording a shifted symbol keeps the character, not Shift', () => {
+    expect(eventToBindingString(new KeyboardEvent('keydown', { key: '?', code: 'Slash', shiftKey: true }))).toBe('?')
+    expect(eventToBindingString(new KeyboardEvent('keydown', { key: '+', code: 'Equal', shiftKey: true, ctrlKey: true }))).toBe('$mod+plus')
+    expect(eventToBindingString(new KeyboardEvent('keydown', { key: '1', code: 'Digit1', shiftKey: false }))).toBe('1')
+  })
+
+  test('physical key names show as the character they type', () => {
+    expect(formatKeyParts('shift+slash')).toEqual(['Shift', '/'])
+    expect(formatKeyParts('shift+digit1')).toEqual(['Shift', '1'])
+    expect(formatKeyParts('$mod+comma').at(-1)).toBe(',')
+    expect(formatKeyParts('$mod+plus').at(-1)).toBe('+')
+    expect(formatKeyParts('?')).toEqual(['?'])
+  })
+})

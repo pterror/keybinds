@@ -35,6 +35,15 @@ keys: ['Backspace', 'Delete']  // Multiple triggers
 
 **Special keys:** `Escape`, `Enter`, `Tab`, `Space`, `Backspace`, `Delete`, `ArrowUp`, `ArrowDown`, etc.
 
+**Characters:** any single character can be bound as itself. A symbol binds however it's typed, so `?` fires on Shift+/ on a US layout and on whatever key types `?` elsewhere. Write the `+` key as `plus`.
+
+```js
+keys: ['?']             // the ? character, Shift included
+keys: ['$mod+plus']     // Ctrl/Cmd and +
+```
+
+**Physical keys:** `shift+/` means Shift and the slash key (the same as `shift+slash`); `shift+1` means Shift and the 1 key (`shift+digit1`). The names are `slash`, `comma`, `period`, `semicolon`, `quote`, `backquote`, `minus`, `equal`, `bracketleft`, `bracketright`, `backslash` and `digit0`–`digit9`, and they're shown as the character they type.
+
 ## Mouse Bindings
 
 ```js

@@ -85,8 +85,42 @@ const KEY_ALIASES = /** @type {Record<string, string>} */ ({
   up: 'arrowup',
   down: 'arrowdown',
   left: 'arrowleft',
-  right: 'arrowright'
+  right: 'arrowright',
+  // "+" separates the parts of a binding, so the key itself is written "plus"
+  plus: '+'
 })
+
+// Punctuation keys, and the name of the physical key that types each on a US layout (event.code)
+const PUNCTUATION_CODES = /** @type {Record<string, string>} */ ({
+  '[': 'bracketleft', ']': 'bracketright', '\\': 'backslash', ';': 'semicolon', "'": 'quote',
+  ',': 'comma', '.': 'period', '/': 'slash', '`': 'backquote', '-': 'minus', '=': 'equal'
+})
+
+// How a physical key name is shown: the character it types on a US layout
+const CODE_GLYPHS = /** @type {Record<string, string>} */ ({
+  ...Object.fromEntries(Object.entries(PUNCTUATION_CODES).map(([ch, code]) => [code, ch])),
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, d) => [`digit${d}`, String(d)])),
+  plus: '+'
+})
+
+/**
+ * A single printable character that isn't a letter ("?", "!", "+", "é" is a letter).
+ * Shift is part of typing these, so a binding to one matches however it was typed.
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isSymbolKey(key) {
+  return [...key].length === 1 && key.trim() !== '' && key.toLowerCase() === key.toUpperCase() && !/[0-9]/.test(key)
+}
+
+/**
+ * Any single printable character can be bound, in addition to the named keys.
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isValidKey(key) {
+  return VALID_KEYS.has(key) || ([...key].length === 1 && key.trim() !== '')
+}
 
 // Valid key names (subset - common ones)
 const VALID_KEYS = new Set([
@@ -99,7 +133,8 @@ const VALID_KEYS = new Set([
   'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'up', 'down', 'left', 'right',
   '[', ']', '\\', ';', "'", ',', '.', '/', '`', '-', '=',
   'bracketleft', 'bracketright', 'backslash', 'semicolon', 'quote',
-  'comma', 'period', 'slash', 'backquote', 'minus', 'equal'
+  'comma', 'period', 'slash', 'backquote', 'minus', 'equal',
+  'digit0', 'digit1', 'digit2', 'digit3', 'digit4', 'digit5', 'digit6', 'digit7', 'digit8', 'digit9'
 ])
 
 const VALID_MOUSE = new Set([
@@ -150,12 +185,18 @@ function parseKey(keyStr) {
   if (rawKey === undefined) {
     throw new Error(`Key binding has no key (only modifiers): "${keyStr}"`)
   }
-  const key = KEY_ALIASES[rawKey] ?? rawKey
+  let key = KEY_ALIASES[rawKey] ?? rawKey
   if (remaining.length > 1) {
     throw new Error(`Key binding has multiple keys: "${keyStr}" (got: ${remaining.join(', ')})`)
   }
-  if (!VALID_KEYS.has(key)) {
+  if (!isValidKey(key)) {
     throw new Error(`Unknown key "${rawKey}" in binding "${keyStr}"`)
+  }
+  // With Shift held, a punctuation or digit key types a different character ("shift+/" types "?"),
+  // so the binding means the physical key: "shift+slash", "shift+digit1".
+  if (mods.shift) {
+    const code = PUNCTUATION_CODES[key] ?? (/^[0-9]$/.test(key) ? `digit${key}` : undefined)
+    if (code) key = code
   }
 
   return { mods, key, release }
@@ -285,6 +326,8 @@ function eventToKeyLookups(event, prefix = eventPrefix(event), suffix = '') {
   const lookups = [`${prefix}${key}${suffix}`]
   if (code !== key) lookups.push(`${prefix}${code}${suffix}`)
   if (codeKey && codeKey !== key) lookups.push(`${prefix}${codeKey}${suffix}`)
+  // "?" is bound as "?", but typing it takes Shift on most layouts
+  if (isSymbolKey(key) && prefix.includes('shift+')) lookups.push(`${prefix.replace('shift+', '')}${key}${suffix}`)
   return lookups
 }
 
@@ -905,7 +948,7 @@ function formatKeyPart(part) {
   if (p === 'arrowdown' || p === 'down') return '↓'
   if (p === 'arrowleft' || p === 'left') return '←'
   if (p === 'arrowright' || p === 'right') return '→'
-  return part.toUpperCase()
+  return CODE_GLYPHS[p] ?? part.toUpperCase()
 }
 
 /**
@@ -1189,14 +1232,16 @@ export function eventToBindingString(event) {
   if (['shift', 'control', 'alt', 'meta'].includes(key)) return null
 
   // Normalize key name — prefer event.key, fall back to event.code
-  let normalizedKey = key
+  let normalizedKey = key === ' ' ? 'space' : key === '+' ? 'plus' : key
   const code = event.code.toLowerCase()
   if (code.startsWith('key')) {
     const codeKey = code.slice(3)
     if (VALID_KEYS.has(codeKey) && !VALID_KEYS.has(key)) normalizedKey = codeKey
   }
 
-  if (!VALID_KEYS.has(normalizedKey)) return null
+  if (!isValidKey(KEY_ALIASES[normalizedKey] ?? normalizedKey)) return null
+  // A symbol is recorded as the character typed ("?"), which already says Shift was needed
+  const shift = event.shiftKey && !isSymbolKey(KEY_ALIASES[normalizedKey] ?? normalizedKey)
 
   // Build modifier prefix using $mod for the platform modifier
   const parts = []
@@ -1206,7 +1251,7 @@ export function eventToBindingString(event) {
   if (hasPlatformMod) parts.push('$mod')
   if (hasNonPlatformMod) parts.push(isMac ? 'ctrl' : 'meta')
   if (event.altKey) parts.push('alt')
-  if (event.shiftKey) parts.push('shift')
+  if (shift) parts.push('shift')
   parts.push(normalizedKey)
 
   return parts.join('+') + suffix
