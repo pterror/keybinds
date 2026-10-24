@@ -4190,7 +4190,8 @@ export function createComponent(kind) {
  * hub.refresh()
  * hub.bindButtons(toolbar) // <button data-command="save">Save</button>
  *
- * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, hidden?: boolean | undefined, when?: ((ctx: Record<string, unknown>) => boolean) | undefined }} [D=Command]
+ * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, hidden?: boolean | undefined }} [D=Command]
+ * @template {object} [C=Record<string, unknown>] - The context `when` conditions see
  */
 export class CommandHub extends EventTarget {
   /**
@@ -4205,7 +4206,7 @@ export class CommandHub extends EventTarget {
     this._adapt = options.adapt ?? ((def) => /** @type {Command} */ (/** @type {unknown} */ (def)))
     /** @type {{ owner: string, get: () => D[] }[]} */
     this._sources = []
-    /** @type {(() => Record<string, unknown>)[]} */
+    /** @type {(() => Partial<C>)[]} */
     this._contexts = []
     /** @type {Map<string, D>} */
     this._defs = new Map()
@@ -4250,7 +4251,7 @@ export class CommandHub extends EventTarget {
 
   /**
    * Add to the context that `when` conditions see. Returns a function that removes it again.
-   * @param {() => Record<string, unknown>} get
+   * @param {() => Partial<C>} get
    * @returns {() => void}
    */
   addContext(get) {
@@ -4258,7 +4259,7 @@ export class CommandHub extends EventTarget {
     return () => { this._contexts = this._contexts.filter((g) => g !== get) }
   }
 
-  /** @returns {Record<string, unknown>} */
+  /** @returns {C} */
   context() {
     return Object.assign({}, ...this._contexts.map((g) => g()))
   }
@@ -4299,7 +4300,7 @@ export class CommandHub extends EventTarget {
   run(id, event) {
     const cmd = this._live.get(id)
     if (!cmd) return false
-    const ctx = this.context()
+    const ctx = /** @type {Record<string, unknown>} */ (this.context())
     if (!isActive(cmd, ctx)) return false
     cmd.execute(ctx, event)
     return true
@@ -4347,7 +4348,7 @@ export class CommandHub extends EventTarget {
 
     this._unbind?.()
     const live = [...this._live.values()]
-    this._unbind = keybinds(live.filter((c) => c.keys?.length || c.mouse?.length), () => this.context(), this._listen)
+    this._unbind = keybinds(live.filter((c) => c.keys?.length || c.mouse?.length), () => /** @type {Record<string, unknown>} */ (this.context()), this._listen)
     const visible = live.filter((c) => !c.hidden)
     if (this.palette) this.palette.commands = visible
     if (this.cheatsheet) this.cheatsheet.commands = visible
@@ -4359,7 +4360,7 @@ export class CommandHub extends EventTarget {
 
   /** Push the current context into the components and command buttons, so unavailable commands grey out. */
   syncContext() {
-    const ctx = this.context()
+    const ctx = /** @type {Record<string, unknown>} */ (this.context())
     if (this.palette) this.palette.context = ctx
     if (this.cheatsheet) this.cheatsheet.context = ctx
     if (this.menu) this.menu.context = ctx
@@ -4436,7 +4437,7 @@ export class CommandHub extends EventTarget {
     }
     root.addEventListener('click', onClick)
     this._buttonRoots.add(root)
-    this._paintButtons(root, this.context())
+    this._paintButtons(root, /** @type {Record<string, unknown>} */ (this.context()))
     return () => {
       root.removeEventListener('click', onClick)
       this._buttonRoots.delete(root)

@@ -944,7 +944,8 @@ export type CommandHubOptions = {
  * hub.refresh()
  * hub.bindButtons(toolbar) // <button data-command="save">Save</button>
  *
- * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, hidden?: boolean | undefined, when?: ((ctx: Record<string, unknown>) => boolean) | undefined }} [D=Command]
+ * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, hidden?: boolean | undefined }} [D=Command]
+ * @template {object} [C=Record<string, unknown>] - The context `when` conditions see
  */
 export declare class CommandHub<D extends {
     id: string;
@@ -954,8 +955,7 @@ export declare class CommandHub<D extends {
     keys?: string[] | undefined;
     mouse?: string[] | undefined;
     hidden?: boolean | undefined;
-    when?: ((ctx: Record<string, unknown>) => boolean) | undefined;
-} = Command> extends EventTarget {
+} = Command, C extends object = Record<string, unknown>> extends EventTarget {
     /**
      * @param {CommandHubOptions & { adapt?: (def: D) => Command }} [options] - `adapt` turns the
      *   sources' definitions into commands, when they aren't commands already
@@ -972,12 +972,12 @@ export declare class CommandHub<D extends {
     setSource(owner: string, get: (() => D[]) | null): void;
     /**
      * Add to the context that `when` conditions see. Returns a function that removes it again.
-     * @param {() => Record<string, unknown>} get
+     * @param {() => Partial<C>} get
      * @returns {() => void}
      */
-    addContext(get: () => Record<string, unknown>): () => void;
-    /** @returns {Record<string, unknown>} */
-    context(): Record<string, unknown>;
+    addContext(get: () => Partial<C>): () => void;
+    /** @returns {C} */
+    context(): C;
     /**
      * Keep rebindings separately per scope (a document type, a game), so a key can mean different
      * things in each. Takes effect on refresh().
