@@ -1828,3 +1828,90 @@ describe('key aliases', () => {
     cleanup()
   })
 })
+
+describe('BasicContextMenu', () => {
+  beforeEach(() => {
+    if (!customElements.get('keybinds-basic-context-menu')) {
+      customElements.define('keybinds-basic-context-menu', BasicContextMenu)
+    }
+  })
+
+  /** @param {import('./index.js').Command[]} commands */
+  function createMenu(commands, menu = '') {
+    const el = /** @type {BasicContextMenu} */ (document.createElement('keybinds-basic-context-menu'))
+    el.commands = commands
+    if (menu) el.menu = menu
+    document.body.appendChild(el)
+    return el
+  }
+  /** @param {BasicContextMenu} el */
+  const items = (el) => /** @type {HTMLElement[]} */ (Array.from(/** @type {ShadowRoot} */ (el.shadowRoot).querySelectorAll('.context-menu__item')))
+  /** @param {BasicContextMenu} el @param {string} key */
+  const press = (el, key) => /** @type {ShadowRoot} */ (el.shadowRoot).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+
+  test('shows only the commands tagged with its menu, unavailable ones disabled', () => {
+    const el = createMenu([
+      { id: 'cut', label: 'Cut', menu: 'edit', execute: () => {} },
+      { id: 'paste', label: 'Paste', menu: ['edit', 'other'], when: () => false, execute: () => {} },
+      { id: 'zoom', label: 'Zoom', menu: 'view', execute: () => {} },
+    ], 'edit')
+    el.open = true
+    const shown = items(el)
+    expect(shown.map((li) => li.textContent)).toEqual(['Cut', 'Paste'])
+    expect(shown[1]?.className).toContain('context-menu__item--disabled')
+    el.remove()
+  })
+
+  test('separates categories', () => {
+    const el = createMenu([
+      { id: 'a', label: 'A', category: 'One', execute: () => {} },
+      { id: 'b', label: 'B', category: 'Two', execute: () => {} },
+    ])
+    el.open = true
+    expect(/** @type {ShadowRoot} */ (el.shadowRoot).querySelectorAll('.context-menu__separator').length).toBe(1)
+    el.remove()
+  })
+
+  test('clicking an item runs it, closes, and says which command ran', () => {
+    const run = mock(() => {})
+    const el = createMenu([{ id: 'go', label: 'Go', execute: run }])
+    const executed = mock(() => {})
+    el.addEventListener('execute', executed)
+    el.open = true
+    items(el)[0]?.click()
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(executed).toHaveBeenCalledTimes(1)
+    expect(el.open).toBe(false)
+    el.remove()
+  })
+
+  test('clicking an unavailable item does nothing', () => {
+    const run = mock(() => {})
+    const el = createMenu([{ id: 'no', label: 'No', when: () => false, execute: run }])
+    el.open = true
+    items(el)[0]?.click()
+    expect(run).not.toHaveBeenCalled()
+    expect(el.open).toBe(true)
+    el.remove()
+  })
+
+  test('arrow keys move through the items, Enter runs one, Escape closes', () => {
+    const first = mock(() => {})
+    const second = mock(() => {})
+    const el = createMenu([
+      { id: 'one', label: 'One', execute: first },
+      { id: 'two', label: 'Two', execute: second },
+    ])
+    el.open = true
+    press(el, 'ArrowDown')
+    press(el, 'ArrowDown')
+    expect(items(el)[1]?.className).toContain('context-menu__item--active')
+    press(el, 'Enter')
+    expect(second).toHaveBeenCalledTimes(1)
+    expect(first).not.toHaveBeenCalled()
+    el.open = true
+    press(el, 'Escape')
+    expect(el.open).toBe(false)
+    el.remove()
+  })
+})

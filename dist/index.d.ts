@@ -13,10 +13,12 @@ export type Modifiers = {
 export type ParsedKey = {
     mods: Modifiers;
     key: string;
+    release: boolean;
 };
 export type ParsedMouse = {
     mods: Modifiers;
     button: number;
+    release: boolean;
 };
 export type Command = {
     id: string;
@@ -61,8 +63,8 @@ export type ScoredCommand = Command & {
  *   id: string           - unique identifier
  *   label: string        - display name
  *   category?: string    - group for command palette
- *   keys?: string[]      - keyboard triggers (e.g., ['$mod+k', 'Escape'])
- *   mouse?: string[]     - mouse triggers (e.g., ['$mod+Click', 'MiddleClick'])
+ *   keys?: string[]      - keyboard triggers (e.g., ['$mod+k', 'Escape']); "k:up" binds the release
+ *   mouse?: string[]     - mouse triggers (e.g., ['$mod+Click', 'MiddleClick', 'Back:up'])
  *   when?: ctx => bool   - activation condition
  *   execute: ctx => any  - action (return false to propagate)
  *   hidden?: bool        - hide from search
@@ -129,11 +131,10 @@ export declare function searchCommands(commands: Command[], query: string, conte
  *   - within last 5 min → +2
  *   - within last 30 min → +1
  *
- * @template {unknown} Ctx
  * @param {HistoryEntry[]} [history]
- * @returns {Scorer<Ctx>}
+ * @returns {Scorer}
  */
-export declare function defaultScorer<Ctx extends unknown>(history?: HistoryEntry[]): Scorer<Ctx>;
+export declare function defaultScorer(history?: HistoryEntry[]): Scorer;
 /**
  * Group commands by category
  *
@@ -359,6 +360,9 @@ export declare function findConflict(schema: Schema, bindingStr: string, type: '
  *   commands: Command[]     - Array of command definitions
  *   context: object         - Context for `when` checks
  *   matcher: Matcher        - Custom matcher function
+ *   source: (query) => Command[] | Promise<Command[]>
+ *                           - Further commands for a non-empty query, merged with `commands`
+ *   sourceDelay: number     - Milliseconds of typing pause before `source` is asked (default 200)
  *   open: boolean           - Show/hide the palette
  *
  * Events:
@@ -391,6 +395,8 @@ export declare class CommandPalette extends HTMLElement {
     set context(val: Record<string, unknown>);
     get matcher(): Matcher | undefined;
     set matcher(val: Matcher | undefined);
+    get source(): ((query: string) => Command[] | Promise<Command[]>) | undefined;
+    set source(val: ((query: string) => Command[] | Promise<Command[]>) | undefined);
     get open(): boolean;
     set open(val: boolean);
     /**
@@ -406,7 +412,13 @@ export declare class CommandPalette extends HTMLElement {
     _onOpen(): void;
     _onClose(): void;
     _close(): void;
-    _search(): void;
+    /** @param {boolean} [ask] - whether to ask `source` again for this query */
+    _search(ask?: boolean): void;
+    /**
+     * Asks `source` once typing pauses; an answer for a query no longer typed is dropped.
+     * @param {string} query
+     */
+    _ask(query: string): void;
     _getAllVisible(): {
         id: string;
         label: string;
@@ -589,6 +601,22 @@ export declare class KeybindSettings extends HTMLElement {
      */
     _startRecording(commandId: string, type: 'keys' | 'mouse', index: number | null): void;
     _stopRecording(): void;
+    /** @param {boolean} release */
+    _setRecordRelease(release: boolean): void;
+    /**
+     * Switch a stored binding between its press and release form
+     * @param {string} commandId
+     * @param {'keys' | 'mouse'} type
+     * @param {number} index
+     */
+    _flipRelease(commandId: string, type: 'keys' | 'mouse', index: number): void;
+    /**
+     * Release switch inside the recording overlay
+     * @returns {HTMLElement}
+     */
+    _renderReleaseToggle(): HTMLElement;
+    /** @returns {string} */
+    _recordingPrompt(): string;
     /** @param {string} bindingStr */
     _handleRecordedBinding(bindingStr: string): void;
     /**

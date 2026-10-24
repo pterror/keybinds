@@ -561,6 +561,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     const lookupKey = eventToMouseLookup(event)
     if (!lookupKey) return
 
+    /** @type {Press} */
     const press = { prefix: eventPrefix(event), fired: new Set() }
     mousePresses.set(event.button, press)
     swallowAux.delete(event.button)
@@ -750,9 +751,8 @@ export function searchCommands(commands, query, context = {}, options = {}) {
  *   - within last 5 min → +2
  *   - within last 30 min → +1
  *
- * @template {unknown} Ctx
  * @param {HistoryEntry[]} [history]
- * @returns {Scorer<Ctx>}
+ * @returns {Scorer}
  */
 export function defaultScorer(history) {
   return (command, context) => {
@@ -1400,12 +1400,12 @@ export class CommandPalette extends HTMLElement {
     this._input.addEventListener('keydown', (e) => this._handleKey(e))
     this._list.addEventListener('mousemove', () => { this._inputMode = 'pointer' })
     this._list.addEventListener('click', (e) => {
-      const li = /** @type {HTMLElement} */ (e.target).closest('.palette__item')
+      const li = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.palette__item'))
       if (li) this._execute(Number(li.dataset['index']))
     })
     this._list.addEventListener('mouseover', (e) => {
       if (this._inputMode !== 'pointer') return
-      const li = /** @type {HTMLElement} */ (e.target).closest('.palette__item')
+      const li = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.palette__item'))
       if (!li) return
       const index = Number(li.dataset['index'])
       if (index !== this._activeIndex) this._setActive(index)
@@ -1583,11 +1583,11 @@ export class CommandPalette extends HTMLElement {
         this._items[i] = li
       }
       if (!li.parentNode) this._list.appendChild(li)
-      this._updateItem(li, this._results[i], i)
+      this._updateItem(li, /** @type {ScoredCommand} */ (this._results[i]), i)
     }
 
     for (let i = this._results.length; i < this._items.length; i++) {
-      this._items[i].remove()
+      this._items[i]?.remove()
     }
 
     this._setActive(this._activeIndex)
@@ -3933,7 +3933,7 @@ export class RadialMenu extends HTMLElement {
       case 'ArrowLeft': {
         e.preventDefault()
         this._inputMode = 'keyboard'
-        const target = arrowToSlot[e.key]
+        const target = /** @type {number} */ (arrowToSlot[e.key])
         // Find the nearest filled slot at or adjacent to the arrow direction
         if (this._items[target]) {
           this._activeIndex = target
@@ -3955,11 +3955,8 @@ export class RadialMenu extends HTMLElement {
         const filled = this._items.map((_, i) => i)
         if (filled.length === 0) break
         const cur = filled.indexOf(this._activeIndex)
-        if (e.shiftKey) {
-          this._activeIndex = filled[cur <= 0 ? filled.length - 1 : cur - 1]
-        } else {
-          this._activeIndex = filled[cur >= filled.length - 1 ? 0 : cur + 1]
-        }
+        const next = e.shiftKey ? filled[cur <= 0 ? filled.length - 1 : cur - 1] : filled[cur >= filled.length - 1 ? 0 : cur + 1]
+        this._activeIndex = next ?? 0
         this._render()
         break
       }
