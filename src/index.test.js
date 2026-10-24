@@ -19,6 +19,7 @@ import {
   eventToMouseBindingString,
   findConflict,
   KeybindSettings,
+  KeybindCheatsheet,
   defaultScorer,
   BasicContextMenu,
   ContextMenu,
@@ -584,6 +585,8 @@ describe('keybinds', () => {
       { id: 'save', label: 'Save', keys: ['ctrl+s'], execute: fn },
     ]
     const cleanup = keybinds(commands, undefined, { target })
+    if (!customElements.get('keybinds-command-palette')) customElements.define('keybinds-command-palette', CommandPalette)
+    document.body.appendChild(target)
 
     const palette = document.createElement('keybinds-command-palette')
     palette.setAttribute('open', '')
@@ -597,6 +600,7 @@ describe('keybinds', () => {
 
     expect(fn).not.toHaveBeenCalled()
     cleanup()
+    target.remove()
   })
 
   test('passes context to execute and when', () => {
@@ -1005,6 +1009,7 @@ describe('KeybindSettings', () => {
       { id: 'save', label: 'Save', keys: ['ctrl+s'], execute: fn },
     ]
     const kbCleanup = keybinds(commands, undefined, { target })
+    document.body.appendChild(target)
 
     const settings = document.createElement('keybinds-settings')
     settings.setAttribute('open', '')
@@ -1018,6 +1023,7 @@ describe('KeybindSettings', () => {
 
     expect(fn).not.toHaveBeenCalled()
     kbCleanup()
+    target.remove()
   })
 
   test('override cleanup removes entry when matching defaults', () => {
@@ -1962,5 +1968,139 @@ describe('characters and shifted keys', () => {
     expect(formatKeyParts('$mod+comma').at(-1)).toBe(',')
     expect(formatKeyParts('$mod+plus').at(-1)).toBe('+')
     expect(formatKeyParts('?')).toEqual(['?'])
+  })
+})
+
+describe('capture phase', () => {
+  test('with capture, a bound key reaches its command before the element it was typed in', () => {
+    const outer = document.createElement('div')
+    const inner = document.createElement('div')
+    outer.appendChild(inner)
+    const editor = mock((/** @type {Event} */ e) => { if (!e.defaultPrevented) editorSaw.push(e) })
+    /** @type {Event[]} */
+    const editorSaw = []
+    inner.addEventListener('keydown', editor)
+    const bold = mock(() => {})
+    const cleanup = keybinds([{ id: 'b', label: 'Bold', keys: ['ctrl+b'], execute: bold }], undefined, { target: outer, capture: true })
+    inner.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', ctrlKey: true, bubbles: true, cancelable: true }))
+    expect(bold).toHaveBeenCalledTimes(1)
+    expect(editorSaw.length).toBe(0)
+    cleanup()
+  })
+
+  test('with capture, a key no active command claims still reaches the element', () => {
+    const outer = document.createElement('div')
+    const inner = document.createElement('div')
+    outer.appendChild(inner)
+    const editor = mock(() => {})
+    inner.addEventListener('keydown', editor)
+    const cleanup = keybinds([{ id: 'b', label: 'Bold', keys: ['ctrl+b'], when: () => false, execute: () => {} }], undefined, { target: outer, capture: true })
+    inner.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', ctrlKey: true, bubbles: true, cancelable: true }))
+    expect(editor).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+})
+
+describe('overlays under any tag name', () => {
+  test('a palette registered under another name still holds keys back while open', () => {
+    const name = 'my-own-palette'
+    if (!customElements.get(name)) customElements.define(name, class extends CommandPalette {})
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    const fn = mock(() => {})
+    const cleanup = keybinds([{ id: 's', label: 'S', keys: ['ctrl+s'], execute: fn }], undefined, { target })
+    const palette = document.createElement(name)
+    target.appendChild(palette)
+    palette.setAttribute('open', '')
+    expect(palette.getAttribute('data-keybinds')).toBe('command-palette')
+    palette.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true }))
+    expect(fn).not.toHaveBeenCalled()
+    cleanup()
+    target.remove()
+  })
+})
+
+describe('scroll gestures', () => {
+  // (happy-dom's WheelEvent ignores modifier keys, so these bind plain scrolling)
+  /** @param {number} deltaY @param {number} [deltaMode] */
+  const wheel = (deltaY, deltaMode = 0) => new WheelEvent('wheel', { deltaY, deltaMode, cancelable: true })
+
+  test('a mouse-wheel notch is one step', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'z', label: 'Zoom out', mouse: ['scrolldown'], execute: fn }], undefined, { target })
+    target.dispatchEvent(wheel(100))
+    expect(fn).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test("a trackpad's small deltas add up to a step, and the page doesn't scroll in between", () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'z', label: 'Zoom out', mouse: ['scrolldown'], execute: fn }], undefined, { target })
+    const events = Array.from({ length: 10 }, () => wheel(12))
+    for (const e of events) target.dispatchEvent(e)
+    // 120px in 12px events: steps at 48+ and 96+... one per 50px
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(events.every((e) => e.defaultPrevented)).toBe(true)
+    cleanup()
+  })
+
+  test('lines count as pixels', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'z', label: 'Z', mouse: ['scrolldown'], execute: fn }], undefined, { target })
+    target.dispatchEvent(wheel(3, 1))
+    expect(fn).toHaveBeenCalledTimes(0)
+    target.dispatchEvent(wheel(1, 1))
+    expect(fn).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('a pause starts a new gesture', async () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'z', label: 'Z', mouse: ['scrolldown'], execute: fn }], undefined, { target, wheel: { idle: 30 } })
+    target.dispatchEvent(wheel(40))
+    await Bun.sleep(60)
+    target.dispatchEvent(wheel(40))
+    expect(fn).toHaveBeenCalledTimes(0)
+    cleanup()
+  })
+
+  test('a command returning false gives the gesture back to the page', () => {
+    const fn = mock(() => false)
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'z', label: 'Z', mouse: ['scrolldown'], execute: fn }], undefined, { target })
+    target.dispatchEvent(wheel(60))
+    const later = wheel(60)
+    target.dispatchEvent(later)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(later.defaultPrevented).toBe(false)
+    cleanup()
+  })
+})
+
+describe('cheatsheet hold trigger', () => {
+  beforeEach(() => {
+    if (!customElements.get('keybinds-cheatsheet')) customElements.define('keybinds-cheatsheet', KeybindCheatsheet)
+  })
+
+  test('holds the chosen modifier, for the chosen time', async () => {
+    const el = /** @type {KeybindCheatsheet} */ (document.createElement('keybinds-cheatsheet'))
+    el.setAttribute('trigger-key', 'Alt')
+    el.setAttribute('trigger-delay', '10')
+    el.setAttribute('auto-trigger', '')
+    document.body.appendChild(el)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control' }))
+    await Bun.sleep(30)
+    expect(el.open).toBe(false)
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt' }))
+    await Bun.sleep(30)
+    expect(el.open).toBe(true)
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }))
+    expect(el.open).toBe(false)
+    el.remove()
   })
 })

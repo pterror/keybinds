@@ -84,7 +84,7 @@ mouse: ['scrollright']      // Horizontal scroll right
 
 **Directions:** `scrollup`, `scrolldown`, `scrollleft`, `scrollright`
 
-Scroll bindings use cooldown-based dispatch (100ms) to fire once per gesture rather than once per pixel.
+A scroll binding runs once per step of scrolling: a mouse-wheel notch is one step, and a trackpad's stream of small deltas adds up to one every 50 pixels. While a bound gesture is going, the page doesn't scroll or zoom in between steps; a pause of 200 ms ends it. Both numbers are options (`wheel: { step, idle }`). If the command returns `false`, the rest of that gesture goes to the page.
 
 ## Context Menu Tags
 

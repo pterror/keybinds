@@ -52,6 +52,16 @@
  */
 
 /**
+ * Marks a component with its kind, so styles and overlay checks work whatever tag name it was
+ * registered under.
+ * @param {HTMLElement} el
+ * @param {string} kind
+ */
+function markKind(el, kind) {
+  if (!el.hasAttribute('data-keybinds')) el.setAttribute('data-keybinds', kind)
+}
+
+/**
  * Detect Mac platform
  */
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
@@ -422,11 +432,44 @@ function isActive(command, context) {
 }
 
 /**
+ * @typedef {Object} KeybindsOptions
+ * @property {EventTarget} [target] - Where to listen (default: window)
+ * @property {(cmd: Command, ctx: Record<string, unknown>) => void} [onExecute] - Called after a command consumes an event
+ * @property {boolean} [capture] - Listen in the capture phase, so a bound key reaches its command before
+ *   anything under the target (an editor, say) handles it. A command that isn't active, or returns false,
+ *   leaves the event alone.
+ * @property {{ step?: number, idle?: number }} [wheel] - Scroll bindings: a command runs once per `step`
+ *   pixels scrolled (default 50, about one mouse-wheel notch; a trackpad's small deltas add up to it),
+ *   and a pause of `idle` ms (default 200) starts a new gesture.
+ */
+
+/**
+ * Elements whose own keyboard handling takes over while they're open
+ * @param {Element | null} tgt
+ * @returns {boolean}
+ */
+function overlayOpen(tgt) {
+  return !!tgt?.closest?.('[data-keybinds="command-palette"][open], [data-keybinds="settings"][open]')
+}
+
+/**
+ * Distance a wheel event scrolls along its main axis, in pixels
+ * @param {WheelEvent} event
+ * @returns {number}
+ */
+function wheelDistance(event) {
+  const d = Math.abs(event.deltaY || event.deltaX)
+  if (event.deltaMode === 1) return d * 16
+  if (event.deltaMode === 2) return d * (typeof window !== 'undefined' ? window.innerHeight : 800)
+  return d
+}
+
+/**
  * Create keybind handler
  *
  * @param {Command[]} commands - Array of command definitions
  * @param {() => Record<string, unknown>} [getContext] - Returns current context state
- * @param {{ target?: EventTarget, onExecute?: (cmd: Command, ctx: Record<string, unknown>) => void }} [options] - Options
+ * @param {KeybindsOptions} [options] - Options
  *
  * Command shape:
  *   id: string           - unique identifier
@@ -463,7 +506,8 @@ function isActive(command, context) {
  * @returns {() => void} Cleanup function
  */
 export function keybinds(commands, getContext = () => ({}), options = {}) {
-  const { target = window, onExecute } = options
+  const { target = window, onExecute, capture = false } = options
+  const { step: WHEEL_STEP = 50, idle: WHEEL_IDLE = 200 } = options.wheel ?? {}
 
   // Build lookup tables for O(1) dispatch
   const lookup = buildLookupTables(commands)
@@ -498,11 +542,6 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   /** Side buttons whose press or release was consumed; their auxclick is cancelled too */
   /** @type {Set<number>} */
   const swallowAux = new Set()
-
-  /** @param {Element | null} tgt */
-  function overlayOpen(tgt) {
-    return !!(tgt?.matches?.('keybinds-command-palette[open]') || tgt?.matches?.('keybinds-settings[open]'))
-  }
 
   /**
    * Run a release's candidates. Commands whose own press fired always run (a
@@ -653,56 +692,64 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     event.preventDefault()
   }
 
-  // Cooldown-based wheel dispatch: fires immediately, then suppresses for 100ms
-  /** @type {Map<string, number>} */
-  const wheelCooldowns = new Map()
-  const WHEEL_COOLDOWN_MS = 100
+  /**
+   * A scroll gesture on one binding: how far it has scrolled since the last step, when it was last
+   * moved, and whether its commands are taking it (if one returned false, the page scrolls instead).
+   * @typedef {{ amount: number, last: number, ours: boolean }} Gesture
+   */
+  /** @type {Map<string, Gesture>} */
+  const gestures = new Map()
 
   /** @param {Event} e */
   function handleWheel(e) {
     const event = /** @type {WheelEvent} */ (e)
-
-    // Don't fire keybinds while the command palette or settings panel is open
-    const tgt = /** @type {Element | null} */ (event.target)
-    if (tgt?.matches?.('keybinds-command-palette[open]')) return
-    if (tgt?.matches?.('keybinds-settings[open]')) return
+    if (overlayOpen(/** @type {Element | null} */ (event.target))) return
 
     const lookupKey = eventToWheelLookup(event)
     if (!lookupKey) return
-
     const candidates = lookup.mouse.get(lookupKey)
     if (!candidates) return
-
-    // Cooldown check
-    const now = performance.now()
-    const lastFire = wheelCooldowns.get(lookupKey)
-    if (lastFire !== undefined && now - lastFire < WHEEL_COOLDOWN_MS) return
-
     const context = getContext()
-    for (const cmd of candidates) {
-      if (!isActive(cmd, context)) continue
-      if (tryExecute(cmd, context, event)) {
-        wheelCooldowns.set(lookupKey, now)
-        return
-      }
+    const active = candidates.filter((cmd) => isActive(cmd, context))
+    if (active.length === 0) return
+
+    const now = performance.now()
+    let gesture = gestures.get(lookupKey)
+    if (!gesture || now - gesture.last > WHEEL_IDLE) {
+      gesture = { amount: 0, last: now, ours: true }
+      gestures.set(lookupKey, gesture)
     }
+    gesture.last = now
+    if (!gesture.ours) return
+    // Between steps the gesture is still the command's: the page mustn't scroll or zoom meanwhile
+    event.preventDefault()
+    gesture.amount += wheelDistance(event)
+    if (gesture.amount < WHEEL_STEP) return
+    // One step per event, so a fast flick doesn't queue up a burst
+    gesture.amount = Math.min(gesture.amount - WHEEL_STEP, WHEEL_STEP)
+    for (const cmd of active) {
+      if (tryExecute(cmd, context, event)) return
+    }
+    gesture.ours = false
   }
 
-  target.addEventListener('keydown', handleKeyDown)
-  target.addEventListener('keyup', handleKeyUp)
-  target.addEventListener('mousedown', handleMouseDown)
-  target.addEventListener('mouseup', handleMouseUp)
-  target.addEventListener('auxclick', handleAuxClick)
-  target.addEventListener('wheel', handleWheel, { passive: false })
+  const opts = { capture }
+  target.addEventListener('keydown', handleKeyDown, opts)
+  target.addEventListener('keyup', handleKeyUp, opts)
+  target.addEventListener('mousedown', handleMouseDown, opts)
+  target.addEventListener('mouseup', handleMouseUp, opts)
+  target.addEventListener('auxclick', handleAuxClick, opts)
+  target.addEventListener('wheel', handleWheel, { capture, passive: false })
 
   // Return cleanup function
   return () => {
-    target.removeEventListener('keydown', handleKeyDown)
-    target.removeEventListener('keyup', handleKeyUp)
-    target.removeEventListener('mousedown', handleMouseDown)
-    target.removeEventListener('mouseup', handleMouseUp)
-    target.removeEventListener('auxclick', handleAuxClick)
-    target.removeEventListener('wheel', handleWheel)
+    target.removeEventListener('keydown', handleKeyDown, opts)
+    target.removeEventListener('keyup', handleKeyUp, opts)
+    target.removeEventListener('mousedown', handleMouseDown, opts)
+    target.removeEventListener('mouseup', handleMouseUp, opts)
+    target.removeEventListener('auxclick', handleAuxClick, opts)
+    target.removeEventListener('wheel', handleWheel, opts)
+    gestures.clear()
     keyPresses.clear()
     mousePresses.clear()
     swallowAux.clear()
@@ -1504,6 +1551,7 @@ export class CommandPalette extends HTMLElement {
   }
 
   connectedCallback() {
+    markKind(this, 'command-palette')
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
     }
@@ -1783,7 +1831,9 @@ export class CommandPalette extends HTMLElement {
  *
  * Attributes:
  *   open         - Show/hide the cheatsheet
- *   auto-trigger - Enable hold-Control trigger (200ms delay)
+ *   auto-trigger  - Open while a modifier is held on its own
+ *   trigger-key   - The modifier to hold: $mod (default: Meta on Mac, Control elsewhere), Control, Alt, Shift or Meta
+ *   trigger-delay - How long to hold it before opening, in ms (default 200)
  *
  * Properties:
  *   commands: Command[]     - Array of command definitions
@@ -1809,7 +1859,7 @@ export class CommandPalette extends HTMLElement {
  */
 export class KeybindCheatsheet extends HTMLElement {
   static get observedAttributes() {
-    return ['open', 'auto-trigger']
+    return ['open', 'auto-trigger', 'trigger-key', 'trigger-delay']
   }
 
   constructor() {
@@ -1870,10 +1920,13 @@ export class KeybindCheatsheet extends HTMLElement {
       this._render()
     } else if (name === 'auto-trigger') {
       this._setupAutoTrigger(newVal !== null)
+    } else if ((name === 'trigger-key' || name === 'trigger-delay') && this.hasAttribute('auto-trigger')) {
+      this._setupAutoTrigger(true)
     }
   }
 
   connectedCallback() {
+    markKind(this, 'cheatsheet')
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
     }
@@ -1891,9 +1944,13 @@ export class KeybindCheatsheet extends HTMLElement {
     }
     if (!enable) return
 
-    this._cleanupTrigger = onModifierHold('Control', (held) => {
+    // Which modifier to hold: "$mod" (the default) is Meta on Mac and Control elsewhere, like in bindings
+    const key = this.getAttribute('trigger-key') || '$mod'
+    const modifier = key.toLowerCase() === '$mod' ? (isMac ? 'Meta' : 'Control') : key
+    const delay = Number(this.getAttribute('trigger-delay') ?? 200)
+    this._cleanupTrigger = onModifierHold(modifier, (held) => {
       this.open = held
-    })
+    }, { delay: Number.isFinite(delay) ? delay : 200 })
   }
 
   _close() {
@@ -2187,6 +2244,10 @@ export class KeybindSettings extends HTMLElement {
     this._dialog = /** @type {HTMLElement} */ (shadow.querySelector('.settings__dialog'))
 
     this._backdrop.addEventListener('click', () => this._close())
+  }
+
+  connectedCallback() {
+    markKind(this, 'settings')
   }
 
   get store() { return this._store }
@@ -2969,6 +3030,7 @@ export class BasicContextMenu extends HTMLElement {
   }
 
   connectedCallback() {
+    markKind(this, 'basic-context-menu')
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
     }
@@ -3369,6 +3431,7 @@ export class ContextMenu extends HTMLElement {
   }
 
   connectedCallback() {
+    markKind(this, 'context-menu')
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
     }
@@ -3753,6 +3816,10 @@ export class RadialMenu extends HTMLElement {
       e.preventDefault()
       this._close()
     })
+  }
+
+  connectedCallback() {
+    markKind(this, 'radial-menu')
   }
 
   get commands() { return this._commands }

@@ -8,9 +8,22 @@ Main entry point. Registers keyboard and mouse listeners.
 function keybinds(
   commands: Command[],
   getContext?: () => Record<string, unknown>,
-  options?: { target?: EventTarget, onExecute?: (cmd, ctx) => void }
+  options?: {
+    target?: EventTarget,
+    onExecute?: (cmd, ctx) => void,
+    capture?: boolean,
+    wheel?: { step?: number, idle?: number },
+  }
 ): () => void
 ```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `target` | `window` | Where to listen |
+| `onExecute` | - | Called after a command consumes an event |
+| `capture` | `false` | Listen in the capture phase, so a bound key reaches its command before anything under `target` (an editor, say) handles it. A key with no active command, or whose command returns `false`, goes on as usual. |
+| `wheel.step` | `50` | Pixels of scrolling per step of a scroll binding (about one mouse-wheel notch) |
+| `wheel.idle` | `200` | Milliseconds without scrolling that end a gesture |
 
 **Returns:** Cleanup function to remove listeners.
 

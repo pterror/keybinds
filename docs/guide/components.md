@@ -92,7 +92,9 @@ Grouped display of available bindings.
 | Attribute | Description |
 |-----------|-------------|
 | `open` | When present, cheatsheet is visible |
-| `auto-trigger` | Enable hold-Control trigger (200ms delay) |
+| `auto-trigger` | Open while a modifier is held on its own |
+| `trigger-key` | Which modifier: `$mod` (default; Meta on Mac, Control elsewhere), `Control`, `Alt`, `Shift` or `Meta` |
+| `trigger-delay` | How long it's held before opening, in ms (default 200) |
 
 ### Events
 

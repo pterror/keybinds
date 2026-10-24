@@ -52,12 +52,21 @@ export type ScoredCommand = Command & {
     score: number;
     positions?: number[];
 };
+export type KeybindsOptions = {
+    target?: EventTarget;
+    onExecute?: (cmd: Command, ctx: Record<string, unknown>) => void;
+    capture?: boolean;
+    wheel?: {
+        step?: number;
+        idle?: number;
+    };
+};
 /**
  * Create keybind handler
  *
  * @param {Command[]} commands - Array of command definitions
  * @param {() => Record<string, unknown>} [getContext] - Returns current context state
- * @param {{ target?: EventTarget, onExecute?: (cmd: Command, ctx: Record<string, unknown>) => void }} [options] - Options
+ * @param {KeybindsOptions} [options] - Options
  *
  * Command shape:
  *   id: string           - unique identifier
@@ -93,10 +102,7 @@ export type ScoredCommand = Command & {
  * }))
  * @returns {() => void} Cleanup function
  */
-export declare function keybinds(commands: Command[], getContext?: () => Record<string, unknown>, options?: {
-    target?: EventTarget;
-    onExecute?: (cmd: Command, ctx: Record<string, unknown>) => void;
-}): () => void;
+export declare function keybinds(commands: Command[], getContext?: () => Record<string, unknown>, options?: KeybindsOptions): () => void;
 /**
  * Search commands with a given matcher
  *
@@ -454,7 +460,9 @@ export declare class CommandPalette extends HTMLElement {
  *
  * Attributes:
  *   open         - Show/hide the cheatsheet
- *   auto-trigger - Enable hold-Control trigger (200ms delay)
+ *   auto-trigger  - Open while a modifier is held on its own
+ *   trigger-key   - The modifier to hold: $mod (default: Meta on Mac, Control elsewhere), Control, Alt, Shift or Meta
+ *   trigger-delay - How long to hold it before opening, in ms (default 200)
  *
  * Properties:
  *   commands: Command[]     - Array of command definitions
@@ -564,6 +572,7 @@ export declare function onModifierHold(modifiers: string | string[], callback: (
 export declare class KeybindSettings extends HTMLElement {
     static get observedAttributes(): string[];
     constructor();
+    connectedCallback(): void;
     get store(): BindingsStore<any> | null;
     set store(val: BindingsStore<any> | null);
     get open(): boolean;
@@ -847,6 +856,7 @@ export declare class ContextMenu extends HTMLElement {
 export declare class RadialMenu extends HTMLElement {
     static get observedAttributes(): string[];
     constructor();
+    connectedCallback(): void;
     get commands(): Command[];
     set commands(val: Command[]);
     get context(): Record<string, unknown>;
