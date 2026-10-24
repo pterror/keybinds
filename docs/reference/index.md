@@ -245,6 +245,35 @@ if (conflict) {
 
 ---
 
+## CommandHub
+
+`new CommandHub({ storageKey?, host?, listen?, adapt? })`. See [Commands From Many Places](../guide/commands.md#commands-from-many-places-commandhub).
+
+| Method | Description |
+|--------|-------------|
+| `setSource(owner, get \| null)` | Set or remove the commands owned by `owner` |
+| `addContext(get)` | Add to the context `when` sees; returns a remover |
+| `setScope(scope)` | Keep rebindings separately per scope |
+| `refresh()` | Re-read sources, rebuild bindings, update components (fires `refresh`) |
+| `syncContext()` | Push the current context to components and buttons |
+| `run(id, event?)` | Run a command if it's available; returns whether it ran |
+| `get(id)`, `all()` | The definitions as given |
+| `keysFor(id)`, `mouseFor(id)` | Current bindings as shown to people |
+| `mouseMatches(id, event)` | Whether a mouse press is one of the command's bindings |
+| `bindButtons(root)` | Make `[data-command]` elements under `root` run and grey out; returns a stopper |
+| `openPalette()`, `openMenu(tag, x, y)` | Open the components |
+| `destroy()` | Stop listening |
+
+Properties: `palette`, `cheatsheet`, `settings`, `menu` (when made with `host`), `store`.
+
+---
+
+## createComponent(kind)
+
+Creates a component (`'command-palette'`, `'cheatsheet'`, `'settings'`, `'basic-context-menu'`, `'context-menu'`, `'radial-menu'`) under a tag name this copy of the library owns.
+
+---
+
 ## Types
 
 ```ts

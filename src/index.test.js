@@ -23,6 +23,8 @@ import {
   defaultScorer,
   BasicContextMenu,
   ContextMenu,
+  CommandHub,
+  createComponent,
   CommandPalette,
 } from './index.js'
 
@@ -2102,5 +2104,122 @@ describe('cheatsheet hold trigger', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }))
     expect(el.open).toBe(false)
     el.remove()
+  })
+})
+
+describe('createComponent', () => {
+  test('uses the usual name, and its own when another copy of the library took it', () => {
+    const palette = createComponent('command-palette')
+    expect(palette).toBeInstanceOf(CommandPalette)
+    if (!customElements.get('keybinds-radial-menu')) customElements.define('keybinds-radial-menu', class extends HTMLElement {})
+    const radial = createComponent('radial-menu')
+    expect(radial.tagName.toLowerCase()).toMatch(/^keybinds-radial-menu-\d+$/)
+    document.body.appendChild(radial)
+    expect(radial.getAttribute('data-keybinds')).toBe('radial-menu')
+    radial.remove()
+  })
+})
+
+describe('CommandHub', () => {
+  beforeEach(() => localStorage.clear())
+
+  /** @param {Partial<import('./index.js').Command>} extra */
+  const cmd = (extra = {}) => ({ id: 'save', label: 'Save', keys: ['ctrl+s'], execute: mock(() => {}), ...extra })
+  const press = (/** @type {EventTarget} */ t) => t.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true }))
+
+  test('commands from every source fire on their keys, and the first source wins an id', () => {
+    const target = document.createElement('div')
+    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    const mine = cmd()
+    const theirs = cmd({ label: 'Other save' })
+    hub.setSource('a', () => [mine])
+    hub.setSource('b', () => [theirs])
+    hub.refresh()
+    press(target)
+    expect(mine.execute).toHaveBeenCalledTimes(1)
+    expect(theirs.execute).not.toHaveBeenCalled()
+    expect(hub.get('save')?.label).toBe('Save')
+    hub.destroy()
+  })
+
+  test("a person's rebinding takes effect at once and is kept per scope", () => {
+    const target = document.createElement('div')
+    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    const save = cmd()
+    hub.setSource('a', () => [save])
+    hub.refresh()
+    hub.store?.save({ save: { keys: ['ctrl+d'] } })
+    press(target)
+    expect(save.execute).not.toHaveBeenCalled()
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ctrlKey: true }))
+    expect(save.execute).toHaveBeenCalledTimes(1)
+    expect(hub.keysFor('save')).toEqual(['Ctrl+D'])
+    hub.setScope('other')
+    hub.refresh()
+    expect(hub.keysFor('save')).toEqual(['Ctrl+S'])
+    hub.destroy()
+  })
+
+  test('one unreadable binding leaves the others working', () => {
+    const target = document.createElement('div')
+    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    const save = cmd()
+    const broken = cmd({ id: 'broken', keys: ['ctrl+notakey'] })
+    const error = console.error
+    console.error = () => {}
+    hub.setSource('a', () => [broken, save])
+    hub.refresh()
+    console.error = error
+    press(target)
+    expect(save.execute).toHaveBeenCalledTimes(1)
+    expect(hub.keysFor('broken')).toEqual([])
+    hub.destroy()
+  })
+
+  test('adapt turns other definitions into commands', () => {
+    const target = document.createElement('div')
+    const ran = mock(() => {})
+    const hub = new CommandHub({ storageKey: 't', listen: { target }, adapt: (/** @type {any} */ d) => ({ ...d, execute: d.run }) })
+    hub.setSource('a', () => [{ id: 'save', label: 'Save', keys: ['ctrl+s'], run: ran }])
+    hub.refresh()
+    press(target)
+    expect(ran).toHaveBeenCalledTimes(1)
+    expect(hub.run('save')).toBe(true)
+    expect(ran).toHaveBeenCalledTimes(2)
+    hub.destroy()
+  })
+
+  test('command buttons run their command and are disabled while it is unavailable', () => {
+    let available = false
+    const hub = new CommandHub({ storageKey: 't', listen: { target: document.createElement('div') } })
+    const save = cmd({ when: () => available })
+    hub.setSource('a', () => [save])
+    hub.refresh()
+    const bar = document.createElement('div')
+    const button = document.createElement('button')
+    button.dataset['command'] = 'save'
+    bar.appendChild(button)
+    const stop = hub.bindButtons(bar)
+    expect(button.disabled).toBe(true)
+    available = true
+    hub.syncContext()
+    expect(button.disabled).toBe(false)
+    button.click()
+    expect(save.execute).toHaveBeenCalledTimes(1)
+    stop()
+    hub.destroy()
+  })
+
+  test('with a host, it makes the components and keeps them in step', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const hub = new CommandHub({ storageKey: 't', host, listen: { target: document.createElement('div') } })
+    hub.setSource('a', () => [cmd(), cmd({ id: 'secret', label: 'Secret', hidden: true })])
+    hub.refresh()
+    expect(hub.palette?.commands.map((c) => c.id)).toEqual(['save'])
+    expect(hub.settings?.store).toBe(hub.store)
+    expect(host.querySelectorAll('[data-keybinds]').length).toBe(4)
+    hub.destroy()
+    host.remove()
   })
 })
