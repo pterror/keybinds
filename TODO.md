@@ -10,3 +10,4 @@
 - [x] `formatKeyParts` showed code-name keys raw (`shift+slash` as "SLASH"). Physical key names now show as the character they type.
 - [x] `<keybind-cheatsheet auto-trigger>` always held Control for 200 ms. It now holds `$mod` by default (Meta on Mac), and `trigger-key` / `trigger-delay` attributes choose the modifier and delay.
 - [x] `dist/index.d.ts` was behind `src/index.js` and `build:types` failed on type errors; the four "failing" tests only failed because `node_modules/happy-dom` was a symlink into another repo's newer happy-dom, whose elements reject Bun's native events. The test setup now installs happy-dom's own DOM and event classes, so the suite passes on either version.
+- [ ] `<keybinds-settings>` shows a "Release" switch on every binding, which makes the panel busy for something few people use (seen in cyoa). Consider showing it only for bindings that are releases, or behind a per-binding menu.
