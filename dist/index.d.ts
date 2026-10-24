@@ -289,6 +289,10 @@ export type BindingsChangeEvent<T extends Schema> = CustomEvent<BindingsChangeDe
  * store.save({ delete: { keys: ['$mod+d'] } })
  */
 export declare class BindingsStore<T extends Schema> extends EventTarget {
+    /** @type {T} */ schema: T;
+    /** @type {string} */ storageKey: string;
+    /** @type {BindingOverrides} */ overrides: BindingOverrides;
+    /** @type {T} */ bindings: T;
     /**
      * @param {T} schema - Default bindings schema
      * @param {string} storageKey - localStorage key
@@ -956,6 +960,14 @@ export declare class CommandHub<D extends {
     mouse?: string[] | undefined;
     hidden?: boolean | undefined;
 } = Command, C extends object = Record<string, unknown>> extends EventTarget {
+    /** @type {CommandPalette | null} */
+    palette: CommandPalette | null;
+    /** @type {KeybindCheatsheet | null} */
+    cheatsheet: KeybindCheatsheet | null;
+    /** @type {KeybindSettings | null} */
+    settings: KeybindSettings | null;
+    /** @type {ContextMenu | null} */
+    menu: ContextMenu | null;
     /**
      * @param {CommandHubOptions & { adapt?: (def: D) => Command }} [options] - `adapt` turns the
      *   sources' definitions into commands, when they aren't commands already

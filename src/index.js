@@ -1149,16 +1149,22 @@ export function listBindings(schema) {
  * store.save({ delete: { keys: ['$mod+d'] } })
  */
 export class BindingsStore extends EventTarget {
+  // Declared as fields so they appear in the generated type declarations
+  /** @type {T} */ schema
+  /** @type {string} */ storageKey
+  /** @type {BindingOverrides} */ overrides
+  /** @type {T} */ bindings
+
   /**
    * @param {T} schema - Default bindings schema
    * @param {string} storageKey - localStorage key
    */
   constructor(schema, storageKey) {
     super()
-    /** @type {T} */ this.schema = schema
-    /** @type {string} */ this.storageKey = storageKey
-    /** @type {BindingOverrides} */ this.overrides = this.loadOverrides()
-    /** @type {T} */ this.bindings = /** @type {T} */ (mergeBindings(schema, this.overrides))
+    this.schema = schema
+    this.storageKey = storageKey
+    this.overrides = this.loadOverrides()
+    this.bindings = /** @type {T} */ (mergeBindings(schema, this.overrides))
   }
 
   /** @returns {BindingOverrides} */
@@ -1186,7 +1192,11 @@ export class BindingsStore extends EventTarget {
    */
   save(newOverrides) {
     this.overrides = newOverrides
-    localStorage.setItem(this.storageKey, JSON.stringify(newOverrides))
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(newOverrides))
+    } catch {
+      // Storage can be unavailable (private browsing, full); the overrides still apply until reload
+    }
     this.bindings = /** @type {T} */ (mergeBindings(this.schema, this.overrides))
     this.dispatchEvent(new CustomEvent('change', {
       detail: { bindings: this.bindings, overrides: this.overrides }
@@ -4194,6 +4204,16 @@ export function createComponent(kind) {
  * @template {object} [C=Record<string, unknown>] - The context `when` conditions see
  */
 export class CommandHub extends EventTarget {
+  // Declared as fields so they appear in the generated type declarations
+  /** @type {CommandPalette | null} */
+  palette = null
+  /** @type {KeybindCheatsheet | null} */
+  cheatsheet = null
+  /** @type {KeybindSettings | null} */
+  settings = null
+  /** @type {ContextMenu | null} */
+  menu = null
+
   /**
    * @param {CommandHubOptions & { adapt?: (def: D) => Command }} [options] - `adapt` turns the
    *   sources' definitions into commands, when they aren't commands already
@@ -4221,14 +4241,6 @@ export class CommandHub extends EventTarget {
     /** @type {Set<Element>} */
     this._buttonRoots = new Set()
 
-    /** @type {CommandPalette | null} */
-    this.palette = null
-    /** @type {KeybindCheatsheet | null} */
-    this.cheatsheet = null
-    /** @type {KeybindSettings | null} */
-    this.settings = null
-    /** @type {ContextMenu | null} */
-    this.menu = null
     if (options.host) {
       this.palette = createComponent('command-palette')
       this.cheatsheet = createComponent('cheatsheet')
