@@ -341,7 +341,7 @@ function onModifierHold(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `modifiers` | `string \| string[]` | - | Modifier key(s): `'Control'`, `'Alt'`, `'Shift'`, `'Meta'` |
-| `callback` | `(held: boolean) => void` | - | Called with `true` when held, `false` on release |
+| `callback` | `(held: boolean) => void` | - | Called with `true` when held by itself for `delay`, `false` on release or when another key, a click or scrolling happens |
 | `options.delay` | `number` | `200` | Hold duration in ms |
 | `options.target` | `EventTarget` | `window` | Element to listen on |
 
@@ -357,4 +357,33 @@ onModifierHold(['Control', 'Meta'], callback)
 
 // Custom delay
 onModifierHold('Alt', callback, { delay: 300 })
+```
+
+---
+
+## onModifierTaps(modifiers, count, callback, options?)
+
+Calls back when a modifier is tapped (pressed and released by itself) `count` times in a row.
+
+```ts
+function onModifierTaps(
+  modifiers: string | string[],
+  count: number,
+  callback: () => void,
+  options?: { within?: number, target?: EventTarget }
+): () => void
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `modifiers` | `string \| string[]` | - | Modifier key(s): `'Control'`, `'Alt'`, `'Shift'`, `'Meta'` |
+| `count` | `number` | - | Taps in a row |
+| `callback` | `() => void` | - | Called on the last tap's release |
+| `options.within` | `number` | `400` | Most ms from one tap's press to the next tap's release |
+| `options.target` | `EventTarget` | `window` | Element to listen on |
+
+**Returns:** Cleanup function.
+
+```js
+onModifierTaps('Shift', 2, () => palette.open = true)
 ```

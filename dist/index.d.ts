@@ -464,7 +464,7 @@ export declare class CommandPalette extends HTMLElement {
  *
  * Attributes:
  *   open         - Show/hide the cheatsheet
- *   auto-trigger  - Open while a modifier is held on its own
+ *   auto-trigger  - Open while a modifier is held on its own; tapping it twice keeps it open
  *   trigger-key   - The modifier to hold: $mod (default: Meta on Mac, Control elsewhere), Control, Alt, Shift or Meta
  *   trigger-delay - How long to hold it before opening, in ms (default 200)
  *
@@ -474,6 +474,7 @@ export declare class CommandPalette extends HTMLElement {
  *   open: boolean           - Show/hide the cheatsheet
  *
  * Events:
+ *   open  - Fired when it opens, however that happened
  *   close - Fired when cheatsheet is dismissed
  *
  * BEM classes:
@@ -533,6 +534,24 @@ export declare function formatMouseParts(binding: string): string[];
  */
 export declare function onModifierHold(modifiers: string | string[], callback: (held: boolean) => void, options?: {
     delay?: number;
+    target?: EventTarget;
+}): () => void;
+/**
+ * Trigger callback when a modifier key is tapped (pressed and released by itself) `count` times in
+ * quick succession, as in double-tapping Shift.
+ *
+ * @param {string | string[]} modifiers - Modifier(s) to listen for: 'Control', 'Alt', 'Shift', 'Meta'
+ * @param {number} count - Taps in a row
+ * @param {() => void} callback
+ * @param {{ within?: number, target?: EventTarget }} [options] - `within`: most ms from one tap's
+ *   press to the next tap's release (default 400)
+ * @returns {() => void} Cleanup function
+ *
+ * @example
+ * onModifierTaps('Control', 2, () => { cheatsheet.open = !cheatsheet.open })
+ */
+export declare function onModifierTaps(modifiers: string | string[], count: number, callback: () => void, options?: {
+    within?: number;
     target?: EventTarget;
 }): () => void;
 /**

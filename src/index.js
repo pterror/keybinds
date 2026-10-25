@@ -1841,7 +1841,7 @@ export class CommandPalette extends HTMLElement {
  *
  * Attributes:
  *   open         - Show/hide the cheatsheet
- *   auto-trigger  - Open while a modifier is held on its own
+ *   auto-trigger  - Open while a modifier is held on its own; tapping it twice keeps it open
  *   trigger-key   - The modifier to hold: $mod (default: Meta on Mac, Control elsewhere), Control, Alt, Shift or Meta
  *   trigger-delay - How long to hold it before opening, in ms (default 200)
  *
@@ -1851,6 +1851,7 @@ export class CommandPalette extends HTMLElement {
  *   open: boolean           - Show/hide the cheatsheet
  *
  * Events:
+ *   open  - Fired when it opens, however that happened
  *   close - Fired when cheatsheet is dismissed
  *
  * BEM classes:
@@ -1927,6 +1928,7 @@ export class KeybindCheatsheet extends HTMLElement {
    */
   attributeChangedCallback(name, _oldVal, newVal) {
     if (name === 'open' && newVal !== null) {
+      this.dispatchEvent(new CustomEvent('open'))
       this._render()
     } else if (name === 'auto-trigger') {
       this._setupAutoTrigger(newVal !== null)
@@ -1958,9 +1960,29 @@ export class KeybindCheatsheet extends HTMLElement {
     const key = this.getAttribute('trigger-key') || '$mod'
     const modifier = key.toLowerCase() === '$mod' ? (isMac ? 'Meta' : 'Control') : key
     const delay = Number(this.getAttribute('trigger-delay') ?? 200)
-    this._cleanupTrigger = onModifierHold(modifier, (held) => {
-      this.open = held
+    // Holding shows it until the key is let go; tapping twice keeps it open (and tapping twice again,
+    // Escape or a click outside closes it).
+    let pinned = false
+    const unhold = onModifierHold(modifier, (held) => {
+      if (!pinned) this.open = held
     }, { delay: Number.isFinite(delay) ? delay : 200 })
+    const untap = onModifierTaps(modifier, 2, () => {
+      pinned = !this.open
+      this.open = pinned
+    })
+    /** @param {KeyboardEvent} e */
+    const escape = (e) => {
+      if (e.key === 'Escape' && this.open) this._close()
+    }
+    const closed = () => { pinned = false }
+    window.addEventListener('keydown', escape, true)
+    this.addEventListener('close', closed)
+    this._cleanupTrigger = () => {
+      unhold()
+      untap()
+      window.removeEventListener('keydown', escape, true)
+      this.removeEventListener('close', closed)
+    }
   }
 
   _close() {
@@ -2099,66 +2121,114 @@ export function formatMouseParts(binding) {
  */
 export function onModifierHold(modifiers, callback, options = {}) {
   const { delay = 200, target = window } = options
-  const mods = Array.isArray(modifiers) ? modifiers : [modifiers]
-  const modSet = new Set(mods.map(m => m.toLowerCase()))
-
   /** @type {ReturnType<typeof setTimeout> | null} */
   let timer = null
   let isHeld = false
+  const stop = () => {
+    if (timer !== null) { clearTimeout(timer); timer = null }
+    if (isHeld) { isHeld = false; callback(false) }
+  }
+  const unwatch = watchModifier(modifiers, target, {
+    down: () => {
+      stop()
+      timer = setTimeout(() => { timer = null; isHeld = true; callback(true) }, delay)
+    },
+    spoiled: stop,
+    up: stop,
+  })
+  return () => { unwatch(); if (timer !== null) clearTimeout(timer) }
+}
 
+/**
+ * Trigger callback when a modifier key is tapped (pressed and released by itself) `count` times in
+ * quick succession, as in double-tapping Shift.
+ *
+ * @param {string | string[]} modifiers - Modifier(s) to listen for: 'Control', 'Alt', 'Shift', 'Meta'
+ * @param {number} count - Taps in a row
+ * @param {() => void} callback
+ * @param {{ within?: number, target?: EventTarget }} [options] - `within`: most ms from one tap's
+ *   press to the next tap's release (default 400)
+ * @returns {() => void} Cleanup function
+ *
+ * @example
+ * onModifierTaps('Control', 2, () => { cheatsheet.open = !cheatsheet.open })
+ */
+export function onModifierTaps(modifiers, count, callback, options = {}) {
+  const { within = 400, target = window } = options
+  /** @type {number[]} */
+  let taps = []
+  let pressed = 0
+  return watchModifier(modifiers, target, {
+    down: () => { pressed = performance.now() },
+    spoiled: () => { taps = [] },
+    up: (clean) => {
+      const now = performance.now()
+      if (!clean || now - pressed > within) return void (taps = [])
+      taps = [...taps.filter((t) => now - t <= within * count), now]
+      if (taps.length >= count) {
+        taps = []
+        callback()
+      }
+    },
+  })
+}
+
+/**
+ * Follows a modifier being pressed and released by itself. `down` is a fresh press (not the key's
+ * auto-repeat) with no other key or button held; `spoiled` is anything else happening while it's
+ * held (another key, a click, scrolling), after which nothing counts until it's released; `up`
+ * is the release, with whether the press stayed clean. Listens in the capture phase, so editors
+ * that stop events don't hide them.
+ *
+ * @param {string | string[]} modifiers
+ * @param {EventTarget} target
+ * @param {{ down: () => void, spoiled: () => void, up: (clean: boolean) => void }} on
+ * @returns {() => void}
+ */
+function watchModifier(modifiers, target, on) {
+  const modSet = new Set((Array.isArray(modifiers) ? modifiers : [modifiers]).map((m) => m.toLowerCase()))
+  let held = false
+  let clean = false
+
+  const spoil = () => {
+    if (!held || !clean) return
+    clean = false
+    on.spoiled()
+  }
   /** @param {Event} e */
-  function handleKeyDown(e) {
+  const keydown = (e) => {
     const event = /** @type {KeyboardEvent} */ (e)
-    if (!modSet.has(event.key.toLowerCase())) {
-      // Non-modifier key pressed — a shortcut was used, not a bare hold
-      if (timer !== null) { clearTimeout(timer); timer = null }
-      if (isHeld) { isHeld = false; callback(false) }
-      return
-    }
-    if (timer !== null) return // already waiting
-
-    timer = setTimeout(() => {
-      isHeld = true
-      callback(true)
-    }, delay)
+    if (!modSet.has(event.key?.toLowerCase())) return spoil()
+    if (event.repeat || held) return
+    held = true
+    // Other modifiers already down (Shift then Control) make it a chord, not a bare press
+    clean = !['Control', 'Alt', 'Shift', 'Meta'].some((m) => !modSet.has(m.toLowerCase()) && event.getModifierState?.(m))
+    if (clean) on.down()
   }
-
   /** @param {Event} e */
-  function handleKeyUp(e) {
+  const keyup = (e) => {
     const event = /** @type {KeyboardEvent} */ (e)
-    if (!modSet.has(event.key.toLowerCase())) return
-
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
-    }
-    if (isHeld) {
-      isHeld = false
-      callback(false)
-    }
+    if (!modSet.has(event.key?.toLowerCase()) || !held) return
+    held = false
+    on.up(clean)
+  }
+  const blur = () => {
+    if (!held) return
+    held = false
+    clean = false
+    on.up(false)
   }
 
-  function handleBlur() {
-    // Release if window loses focus
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
-    }
-    if (isHeld) {
-      isHeld = false
-      callback(false)
-    }
-  }
-
-  target.addEventListener('keydown', handleKeyDown)
-  target.addEventListener('keyup', handleKeyUp)
-  window.addEventListener('blur', handleBlur)
-
+  const others = /** @type {const} */ (['pointerdown', 'wheel', 'contextmenu'])
+  target.addEventListener('keydown', keydown, true)
+  target.addEventListener('keyup', keyup, true)
+  for (const type of others) target.addEventListener(type, spoil, { capture: true, passive: true })
+  window.addEventListener('blur', blur)
   return () => {
-    target.removeEventListener('keydown', handleKeyDown)
-    target.removeEventListener('keyup', handleKeyUp)
-    window.removeEventListener('blur', handleBlur)
-    if (timer !== null) clearTimeout(timer)
+    target.removeEventListener('keydown', keydown, true)
+    target.removeEventListener('keyup', keyup, true)
+    for (const type of others) target.removeEventListener(type, spoil, true)
+    window.removeEventListener('blur', blur)
   }
 }
 
@@ -4247,6 +4317,8 @@ export class CommandHub extends EventTarget {
       this.settings = createComponent('settings')
       this.menu = createComponent('context-menu')
       options.host.append(this.palette, this.cheatsheet, this.settings, this.menu)
+      // However the cheatsheet opens (a command, holding a key), it shows what applies right now.
+      this.cheatsheet.addEventListener('open', () => this.syncContext())
     }
   }
 

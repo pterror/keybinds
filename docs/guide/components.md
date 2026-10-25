@@ -92,7 +92,7 @@ Grouped display of available bindings.
 | Attribute | Description |
 |-----------|-------------|
 | `open` | When present, cheatsheet is visible |
-| `auto-trigger` | Open while a modifier is held on its own |
+| `auto-trigger` | Open while a modifier is held on its own; tapping it twice keeps it open until it's tapped twice again, Escape or a click outside |
 | `trigger-key` | Which modifier: `$mod` (default; Meta on Mac, Control elsewhere), `Control`, `Alt`, `Shift` or `Meta` |
 | `trigger-delay` | How long it's held before opening, in ms (default 200) |
 
@@ -299,6 +299,22 @@ const cleanup = onModifierHold('Control', (held) => {
 ```js
 onModifierHold(['Control', 'Meta'], callback)  // Either modifier
 ```
+
+A hold only counts while the modifier is down by itself: another key, a click or scrolling ends it (a shortcut like Ctrl+B never shows the cheatsheet, however long Ctrl stays down), and the key's auto-repeat doesn't start it again.
+
+## onModifierTaps Utility
+
+For double-tapping a modifier (pressing and releasing it by itself), as in double-tapping Shift:
+
+```js
+import { onModifierTaps } from 'keybinds'
+
+const cleanup = onModifierTaps('Control', 2, () => {
+  cheatsheet.open = !cheatsheet.open
+}, { within: 400 })
+```
+
+`within` is the most milliseconds from one tap's press to the next tap's release (default 400).
 
 ### Recording releases
 
