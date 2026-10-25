@@ -844,6 +844,25 @@ describe('CommandPalette source', () => {
     expect(labels(el)).toEqual([])
     el.remove()
   })
+
+  test('what source answers runs when chosen, by click or Enter', async () => {
+    const el = /** @type {CommandPalette} */ (document.createElement('keybinds-command-palette'))
+    document.body.appendChild(el)
+    const ran = /** @type {string[]} */ ([])
+    el.sourceDelay = 0
+    el.source = async () => [{ id: 'b', label: 'Bravo', execute: () => { ran.push('b') } }]
+    const input = /** @type {HTMLInputElement} */ (/** @type {ShadowRoot} */ (el.shadowRoot).querySelector('input'))
+    const item = () => /** @type {HTMLElement} */ (/** @type {ShadowRoot} */ (el.shadowRoot).querySelector('.palette__item'))
+    for (const choose of [() => item().click(), () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))]) {
+      el.open = true
+      input.value = 'br'
+      type(input)
+      await new Promise(r => setTimeout(r, 5))
+      choose()
+    }
+    expect(ran).toEqual(['b', 'b'])
+    el.remove()
+  })
 })
 
 describe('KeybindSettings', () => {

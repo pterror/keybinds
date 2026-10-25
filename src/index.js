@@ -1602,7 +1602,7 @@ export class CommandPalette extends HTMLElement {
     this._activeIndex = 0
     this._inputMode = 'keyboard'
     this._search()
-    requestAnimationFrame(() => this._input.focus())
+    this._input.focus()
   }
 
   _onClose() {
@@ -1831,7 +1831,7 @@ export class CommandPalette extends HTMLElement {
     if (!cmd || !cmd.active) return
 
     this._close()
-    executeCommand(this._commands, cmd.id, this._context)
+    cmd.execute(this._context)
     this.dispatchEvent(new CustomEvent('execute', { detail: { command: cmd } }))
   }
 }
@@ -3047,8 +3047,8 @@ export class BasicContextMenu extends HTMLElement {
         * { box-sizing: border-box; }
         .context-menu__backdrop { position: fixed; inset: 0; }
       </style>
+      <div class="context-menu__backdrop" part="backdrop"></div>
       <div class="context-menu" part="context-menu">
-        <div class="context-menu__backdrop" part="backdrop"></div>
         <ul class="context-menu__list" part="list" role="menu"></ul>
       </div>
     `
@@ -3161,7 +3161,7 @@ export class BasicContextMenu extends HTMLElement {
     this._keyHandler = handler
     const shadow = /** @type {ShadowRoot} */ (this.shadowRoot)
     shadow.addEventListener('keydown', handler)
-    requestAnimationFrame(() => this._list.focus())
+    this._list.focus()
   }
 
   _onClose() {
@@ -3307,7 +3307,7 @@ export class BasicContextMenu extends HTMLElement {
     if (!cmd || !cmd.active) return
 
     this._close()
-    executeCommand(this._commands, cmd.id, this._context)
+    cmd.execute(this._context)
     this.dispatchEvent(new CustomEvent('execute', { detail: { command: cmd } }))
   }
 }
@@ -3417,8 +3417,8 @@ export class ContextMenu extends HTMLElement {
           max-height: 600px;
         }
       </style>
+      <div class="context-menu__backdrop" part="backdrop"></div>
       <div class="context-menu" part="context-menu">
-        <div class="context-menu__backdrop" part="backdrop"></div>
         <input
           class="context-menu__search"
           part="search"
@@ -3567,7 +3567,8 @@ export class ContextMenu extends HTMLElement {
     // On a touch screen, focusing the search would bring up the on-screen keyboard over the menu;
     // the list takes focus instead, and the search is a tap away.
     const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
-    requestAnimationFrame(() => (touch ? this._list : this._searchInput).focus())
+    const first = touch ? this._list : this._searchInput
+    first.focus()
   }
 
   _onClose() {
@@ -3784,7 +3785,7 @@ export class ContextMenu extends HTMLElement {
     if (!cmd || !cmd.active) return
 
     this._close()
-    executeCommand(this._commands, cmd.id, this._context)
+    cmd.execute(this._context)
     this.dispatchEvent(new CustomEvent('execute', { detail: { command: cmd } }))
   }
 }
@@ -4187,7 +4188,7 @@ export class RadialMenu extends HTMLElement {
     if (!cmd || !cmd.active) return
 
     this._close()
-    executeCommand(this._commands, cmd.id, this._context)
+    cmd.execute(this._context)
     this.dispatchEvent(new CustomEvent('command', { detail: { command: cmd } }))
   }
 }
