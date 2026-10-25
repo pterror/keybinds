@@ -473,3 +473,17 @@
 [data-keybinds="radial-menu"]::part(spoke) {
   stroke: var(--kb-fg);
 }
+
+/* ========================================
+   Touch: rows big enough to tap
+   ======================================== */
+
+@media (pointer: coarse) {
+  [data-keybinds="command-palette"]::part(item),
+  [data-keybinds="basic-context-menu"]::part(item),
+  [data-keybinds="context-menu"]::part(item) {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}

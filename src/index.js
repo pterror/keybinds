@@ -3562,7 +3562,10 @@ export class ContextMenu extends HTMLElement {
     this._keyHandler = handler
     const shadow = /** @type {ShadowRoot} */ (this.shadowRoot)
     shadow.addEventListener('keydown', handler)
-    requestAnimationFrame(() => this._searchInput.focus())
+    // On a touch screen, focusing the search would bring up the on-screen keyboard over the menu;
+    // the list takes focus instead, and the search is a tap away.
+    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+    requestAnimationFrame(() => (touch ? this._list : this._searchInput).focus())
   }
 
   _onClose() {
