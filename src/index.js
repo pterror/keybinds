@@ -3057,6 +3057,8 @@ export class BasicContextMenu extends HTMLElement {
     this._backdrop = /** @type {HTMLElement} */ (shadow.querySelector('.context-menu__backdrop'))
     /** @type {HTMLElement} */
     this._list = /** @type {HTMLElement} */ (shadow.querySelector('.context-menu__list'))
+    /** @type {ResizeObserver | null} */
+    this._resize = null
 
     this._backdrop.addEventListener('click', () => this._close())
     this._backdrop.addEventListener('contextmenu', (e) => {
@@ -3569,6 +3571,8 @@ export class ContextMenu extends HTMLElement {
   }
 
   _onClose() {
+    this._resize?.disconnect()
+    this._resize = null
     if (this._keyHandler) {
       const shadow = /** @type {ShadowRoot} */ (this.shadowRoot)
       shadow.removeEventListener('keydown', this._keyHandler)
@@ -3626,16 +3630,23 @@ export class ContextMenu extends HTMLElement {
     const container = /** @type {HTMLElement} */ (this.shadowRoot?.querySelector('.context-menu'))
     if (!container) return
     container.style.position = 'fixed'
-    container.style.left = `${x}px`
-    container.style.top = `${y}px`
-
-    requestAnimationFrame(() => {
-      const rect = container.getBoundingClientRect()
-      const vw = window.innerWidth
+    // Kept on screen, and again whenever it changes size (more items shown, a search narrowing them):
+    // without room below the point it opens upward from it, and without room either way it fits
+    // where it can.
+    const clamp = () => {
+      const w = container.offsetWidth
+      const h = container.offsetHeight
       const vh = window.innerHeight
-      if (rect.right > vw) container.style.left = `${Math.max(0, vw - rect.width)}px`
-      if (rect.bottom > vh) container.style.top = `${Math.max(0, vh - rect.height)}px`
-    })
+      const top = y + h <= vh ? y : y - h >= 0 ? y - h : vh - h
+      container.style.left = `${Math.max(0, Math.min(x, window.innerWidth - w))}px`
+      container.style.top = `${Math.max(0, top)}px`
+    }
+    clamp()
+    if (typeof ResizeObserver === 'function') {
+      this._resize?.disconnect()
+      this._resize = new ResizeObserver(clamp)
+      this._resize.observe(container)
+    } else requestAnimationFrame(clamp)
   }
 
   _render() {
