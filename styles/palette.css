@@ -78,6 +78,33 @@
   font: 14px/1.4 var(--kb-font);
 }
 
+/* Opening: the backdrop fades in and the dialog rises into place. */
+[data-keybinds="command-palette"]::part(backdrop),
+[data-keybinds="cheatsheet"]::part(backdrop),
+[data-keybinds="settings"]::part(backdrop) {
+  animation: keybinds-fade 140ms ease-out;
+}
+[data-keybinds="command-palette"]::part(dialog),
+[data-keybinds="cheatsheet"]::part(dialog),
+[data-keybinds="settings"]::part(dialog),
+[data-keybinds="basic-context-menu"],
+[data-keybinds="context-menu"] {
+  animation: keybinds-rise 160ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes keybinds-fade {
+  from { opacity: 0; }
+}
+@keyframes keybinds-rise {
+  from { opacity: 0; scale: 0.97; translate: 0 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-keybinds],
+  [data-keybinds]::part(backdrop),
+  [data-keybinds]::part(dialog) {
+    animation: none;
+  }
+}
+
 [data-keybinds]::part(item-key),
 [data-keybinds="settings"]::part(binding-key) {
   display: inline-block;
