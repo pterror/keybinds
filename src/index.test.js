@@ -2020,6 +2020,20 @@ describe('overlays under any tag name', () => {
     cleanup()
     target.remove()
   })
+
+  test('an open context menu keeps its keys (Enter picks its item, not a command bound to Enter)', () => {
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    const fn = mock(() => {})
+    const cleanup = keybinds([{ id: 'go', label: 'Go', keys: ['Enter'], execute: fn }], undefined, { target })
+    const menu = createComponent('context-menu')
+    target.appendChild(menu)
+    menu.setAttribute('open', '')
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
+    expect(fn).not.toHaveBeenCalled()
+    cleanup()
+    target.remove()
+  })
 })
 
 describe('scroll gestures', () => {

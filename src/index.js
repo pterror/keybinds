@@ -449,7 +449,7 @@ function isActive(command, context) {
  * @returns {boolean}
  */
 function overlayOpen(tgt) {
-  return !!tgt?.closest?.('[data-keybinds="command-palette"][open], [data-keybinds="settings"][open]')
+  return !!tgt?.closest?.('[data-keybinds="command-palette"][open], [data-keybinds="settings"][open], [data-keybinds="context-menu"][open], [data-keybinds="basic-context-menu"][open]')
 }
 
 /**
