@@ -2314,6 +2314,23 @@ describe('CommandHub', () => {
     host.remove()
   })
 
+  test('closing the palette gives focus back to where it was', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const hub = new CommandHub({ storageKey: 't', host, listen: { target: document.createElement('div') } })
+    const editor = document.createElement('textarea')
+    document.body.appendChild(editor)
+    editor.focus()
+    hub.openPalette()
+    const palette = /** @type {any} */ (hub.palette)
+    palette._input.focus()
+    palette._close()
+    expect(document.activeElement).toBe(editor)
+    hub.destroy()
+    host.remove()
+    editor.remove()
+  })
+
   test('an open menu or palette keeps the context it was opened in', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

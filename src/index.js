@@ -4323,6 +4323,27 @@ export class CommandHub extends EventTarget {
       options.host.append(this.palette, this.cheatsheet, this.settings, this.menu)
       // However the cheatsheet opens (a command, holding a key), it shows what applies right now.
       this.cheatsheet.addEventListener('open', () => this.syncContext())
+      // Closing the palette, settings or a menu gives focus back to where it was (the text being
+      // edited, say), before the chosen command runs; the command can still move it elsewhere.
+      /** @type {HTMLElement | null} */
+      this._lastFocus = null
+      /** @param {FocusEvent} e */
+      this._onFocusIn = (e) => {
+        const el = /** @type {HTMLElement} */ (e.target)
+        // Focus inside a component (even in its shadow DOM) isn't somewhere to come back to
+        for (let n = /** @type {Element | undefined} */ (el); n; n = /** @type {ShadowRoot} */ (n.getRootNode()).host) {
+          if (n.closest?.('[data-keybinds]')) return
+        }
+        this._lastFocus = el
+      }
+      document.addEventListener('focusin', this._onFocusIn, true)
+      for (const overlay of [this.palette, this.settings, this.menu]) {
+        overlay.addEventListener('close', () => {
+          const now = document.activeElement
+          const lost = !now || now === document.body || now === overlay || overlay.contains(now) || now.getRootNode() === overlay.shadowRoot
+          if (lost && this._lastFocus?.isConnected) this._lastFocus.focus({ preventScroll: true })
+        })
+      }
     }
   }
 
@@ -4553,6 +4574,7 @@ export class CommandHub extends EventTarget {
     this._unbind = null
     this._store?.removeEventListener('change', this._storeListener)
     this._buttonRoots.clear()
+    if (this._onFocusIn) document.removeEventListener('focusin', this._onFocusIn, true)
   }
 }
 
