@@ -1972,7 +1972,11 @@ export class KeybindCheatsheet extends HTMLElement {
     })
     /** @param {KeyboardEvent} e */
     const escape = (e) => {
-      if (e.key === 'Escape' && this.open) this._close()
+      if (e.key !== 'Escape' || !this.open) return
+      // Escape was for closing it, not for whatever is underneath too
+      e.preventDefault()
+      e.stopPropagation()
+      this._close()
     }
     const closed = () => { pinned = false }
     window.addEventListener('keydown', escape, true)
@@ -4445,9 +4449,11 @@ export class CommandHub extends EventTarget {
   /** Push the current context into the components and command buttons, so unavailable commands grey out. */
   syncContext() {
     const ctx = /** @type {Record<string, unknown>} */ (this.context())
-    if (this.palette) this.palette.context = ctx
+    // The palette and menus take focus when they open, which changes the context (nothing is being
+    // edited any more); while open, they keep acting on where they were opened from.
+    if (this.palette && !this.palette.open) this.palette.context = ctx
     if (this.cheatsheet) this.cheatsheet.context = ctx
-    if (this.menu) this.menu.context = ctx
+    if (this.menu && !this.menu.open) this.menu.context = ctx
     for (const root of this._buttonRoots) this._paintButtons(root, ctx)
   }
 

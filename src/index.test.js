@@ -2299,4 +2299,27 @@ describe('CommandHub', () => {
     hub.destroy()
     host.remove()
   })
+
+  test('an open menu or palette keeps the context it was opened in', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const hub = new CommandHub({ storageKey: 't', host, listen: { target: document.createElement('div') } })
+    let editing = true
+    hub.addContext(() => ({ editing }))
+    hub.setSource('a', () => [cmd({ menu: 'text' })])
+    hub.refresh()
+    hub.openMenu('text', 0, 0)
+    hub.openPalette()
+    // Focus moved into them, so nothing is being edited any more
+    editing = false
+    hub.syncContext()
+    expect(hub.menu?.context).toEqual({ editing: true })
+    expect(hub.palette?.context).toEqual({ editing: true })
+    expect(hub.cheatsheet?.context).toEqual({ editing: false })
+    hub.menu && (hub.menu.open = false)
+    hub.syncContext()
+    expect(hub.menu?.context).toEqual({ editing: false })
+    hub.destroy()
+    host.remove()
+  })
 })
