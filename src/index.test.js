@@ -685,6 +685,64 @@ describe('BindingsStore', () => {
     store.save({ open: { keys: ['ctrl+o'] } })
     expect(store.getOverrides()).toEqual({ open: { keys: ['ctrl+o'] } })
   })
+
+  /** storage held in a variable, which can also be changed from "elsewhere" */
+  const memoryStorage = (/** @type {import('./index.js').BindingOverrides} */ initial = {}) => {
+    let held = initial
+    /** @type {Set<(o: import('./index.js').BindingOverrides) => void>} */
+    const listeners = new Set()
+    const set = (/** @type {import('./index.js').BindingOverrides} */ o) => {
+      held = o
+      for (const l of listeners) l(o)
+    }
+    return {
+      set,
+      storage: {
+        load: () => held,
+        save: set,
+        subscribe: (/** @type {(o: import('./index.js').BindingOverrides) => void} */ fn) => {
+          listeners.add(fn)
+          return () => listeners.delete(fn)
+        },
+      },
+    }
+  }
+
+  test('loads from and saves to custom storage, without touching localStorage', () => {
+    const { storage } = memoryStorage({ save: { keys: ['ctrl+s'] } })
+    const store = new BindingsStore(schema, storage)
+    expect(store.get()['save']?.keys).toEqual(['ctrl+s'])
+    store.save({ open: { keys: ['ctrl+o'] } })
+    expect(storage.load()).toEqual({ open: { keys: ['ctrl+o'] } })
+    expect(localStorage.length).toBe(0)
+  })
+
+  test('follows custom storage changed from elsewhere', () => {
+    const { storage, set } = memoryStorage()
+    const store = new BindingsStore(schema, storage)
+    const handler = mock(() => {})
+    store.addEventListener('change', handler)
+    set({ save: { keys: ['ctrl+shift+s'] } })
+    expect(store.get()['save']?.keys).toEqual(['ctrl+shift+s'])
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  test('a save that the storage echoes back fires one change', () => {
+    const { storage } = memoryStorage()
+    const store = new BindingsStore(schema, storage)
+    const handler = mock(() => {})
+    store.addEventListener('change', handler)
+    store.save({ save: { keys: ['ctrl+s'] } })
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  test('dispose stops following the storage', () => {
+    const { storage, set } = memoryStorage()
+    const store = new BindingsStore(schema, storage)
+    store.dispose()
+    set({ save: { keys: ['ctrl+shift+s'] } })
+    expect(store.get()['save']?.keys).toEqual(['$mod+s'])
+  })
 })
 
 // --- eventToBindingString tests ---
@@ -2236,6 +2294,22 @@ describe('CommandHub', () => {
   /** @param {Partial<import('./index.js').Command>} extra */
   const cmd = (extra = {}) => ({ id: 'save', label: 'Save', keys: ['ctrl+s'], execute: mock(() => {}), ...extra })
   const press = (/** @type {EventTarget} */ t) => t.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true }))
+
+  test('rebindings can be kept in custom storage, per scope', () => {
+    /** @type {Record<string, import('./index.js').BindingOverrides>} */
+    const kept = {}
+    const hub = new CommandHub({
+      listen: { target: document.createElement('div') },
+      storage: (scope) => ({ load: () => kept[scope] ?? {}, save: (o) => { kept[scope] = o } }),
+    })
+    hub.setSource('a', () => [cmd()])
+    hub.setScope('game')
+    hub.refresh()
+    hub.store?.save({ save: { keys: ['ctrl+shift+s'] } })
+    expect(kept).toEqual({ game: { save: { keys: ['ctrl+shift+s'] } } })
+    expect(localStorage.length).toBe(0)
+    hub.destroy()
+  })
 
   test('commands from every source fire on their keys, and the first source wins an id', () => {
     const target = document.createElement('div')

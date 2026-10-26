@@ -162,18 +162,29 @@ function listBindings(schema: Schema): Array<BindingSchema & { id: string }>
 
 ## BindingsStore
 
-Reactive store with localStorage persistence.
+Reactive store of people's overrides, kept in localStorage or anywhere else.
 
 ```ts
 class BindingsStore<T extends Schema> extends EventTarget {
-  constructor(schema: T, storageKey: string)
+  constructor(schema: T, storage: string | BindingsStorage)
   get(): T
   getOverrides(): BindingOverrides
   save(overrides: BindingOverrides): void
+  dispose(): void
 }
+
+type BindingsStorage = {
+  load(): BindingOverrides
+  save(overrides: BindingOverrides): void
+  subscribe?(onChange: (overrides: BindingOverrides) => void): () => void
+}
+
+function localStorageBindings(key: string): BindingsStorage
 ```
 
-Dispatches `'change'` event when bindings are saved.
+A string is a localStorage key (the same as `localStorageBindings(key)`). Any other storage only needs `load` and `save`. If it can change from elsewhere (another tab, an undo, sync), give it `subscribe` too and the store follows it; `dispose()` stops following.
+
+Dispatches `'change'` event when bindings are saved, or when the storage changes.
 
 ```js
 const store = new BindingsStore(schema, 'app:keybinds')
@@ -247,7 +258,7 @@ if (conflict) {
 
 ## CommandHub
 
-`new CommandHub({ storageKey?, host?, listen?, adapt? })`. See [Commands From Many Places](../guide/commands.md#commands-from-many-places-commandhub).
+`new CommandHub({ storageKey?, storage?, host?, listen?, adapt? })`. `storage` is `(scope) => BindingsStorage`, for keeping rebindings somewhere other than localStorage. See [Commands From Many Places](../guide/commands.md#commands-from-many-places-commandhub).
 
 | Method | Description |
 |--------|-------------|

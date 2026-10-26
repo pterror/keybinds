@@ -1135,15 +1135,54 @@ export function listBindings(schema) {
  */
 
 /**
- * Reactive bindings store with localStorage persistence
+ * Where a BindingsStore keeps people's overrides
  *
- * Extends EventTarget - dispatches 'change' events when bindings are saved.
+ * @typedef {Object} BindingsStorage
+ * @property {() => BindingOverrides} load - The current overrides
+ * @property {(overrides: BindingOverrides) => void} save
+ * @property {(onChange: (overrides: BindingOverrides) => void) => () => void} [subscribe] - For storage
+ *   that can change from elsewhere (another tab, an undo, sync): the store follows it. Returns an
+ *   unsubscribe function
+ */
+
+/**
+ * Storage that keeps overrides in localStorage under one key
+ *
+ * @param {string} key
+ * @returns {BindingsStorage}
+ */
+export function localStorageBindings(key) {
+  return {
+    load() {
+      try {
+        return JSON.parse(localStorage.getItem(key) || '{}')
+      } catch {
+        return {}
+      }
+    },
+    save(overrides) {
+      try {
+        localStorage.setItem(key, JSON.stringify(overrides))
+      } catch {
+        // Storage can be unavailable (private browsing, full); the overrides still apply until reload
+      }
+    },
+  }
+}
+
+/**
+ * Reactive bindings store, persisted to localStorage or to any {@link BindingsStorage}
+ *
+ * Extends EventTarget - dispatches 'change' events when bindings are saved, or when the storage
+ * changes from elsewhere.
  *
  * @template {Schema} T
  * @extends {EventTarget}
  *
  * @example
  * const store = new BindingsStore(schema, 'myapp:keybinds')
+ * // or keep them anywhere:
+ * const store = new BindingsStore(schema, { load: () => prefs.keys ?? {}, save: (o) => { prefs.keys = o } })
  *
  * // Get current bindings (merged schema + overrides)
  * const bindings = store.get()
@@ -1159,29 +1198,27 @@ export function listBindings(schema) {
 export class BindingsStore extends EventTarget {
   // Declared as fields so they appear in the generated type declarations
   /** @type {T} */ schema
-  /** @type {string} */ storageKey
+  /** @type {BindingsStorage} */ storage
   /** @type {BindingOverrides} */ overrides
   /** @type {T} */ bindings
 
   /**
    * @param {T} schema - Default bindings schema
-   * @param {string} storageKey - localStorage key
+   * @param {string | BindingsStorage} storage - A localStorage key, or where to keep overrides
    */
-  constructor(schema, storageKey) {
+  constructor(schema, storage) {
     super()
     this.schema = schema
-    this.storageKey = storageKey
-    this.overrides = this.loadOverrides()
+    this.storage = typeof storage === 'string' ? localStorageBindings(storage) : storage
+    this.overrides = this.storage.load()
     this.bindings = /** @type {T} */ (mergeBindings(schema, this.overrides))
-  }
-
-  /** @returns {BindingOverrides} */
-  loadOverrides() {
-    try {
-      return JSON.parse(localStorage.getItem(this.storageKey) || '{}')
-    } catch {
-      return {}
-    }
+    // Storage that echoes the store's own saves back would otherwise fire every change twice
+    /** @type {(() => void) | null} */
+    this._unsubscribe = this.storage.subscribe?.((overrides) => {
+      if (JSON.stringify(overrides) === JSON.stringify(this.overrides)) return
+      this.overrides = overrides
+      this._changed()
+    }) ?? null
   }
 
   /** Get current bindings (schema merged with overrides) */
@@ -1200,11 +1237,18 @@ export class BindingsStore extends EventTarget {
    */
   save(newOverrides) {
     this.overrides = newOverrides
-    try {
-      localStorage.setItem(this.storageKey, JSON.stringify(newOverrides))
-    } catch {
-      // Storage can be unavailable (private browsing, full); the overrides still apply until reload
-    }
+    this.storage.save(newOverrides)
+    this._changed()
+  }
+
+  /** Stop following the storage's changes */
+  dispose() {
+    this._unsubscribe?.()
+    this._unsubscribe = null
+  }
+
+  /** @private */
+  _changed() {
     this.bindings = /** @type {T} */ (mergeBindings(this.schema, this.overrides))
     this.dispatchEvent(new CustomEvent('change', {
       detail: { bindings: this.bindings, overrides: this.overrides }
@@ -4280,7 +4324,9 @@ export function createComponent(kind) {
 
 /**
  * @typedef {Object} CommandHubOptions
- * @property {string} [storageKey] - Where people's rebindings are kept (default "keybinds"); the scope is appended
+ * @property {string} [storageKey] - localStorage key for people's rebindings (default "keybinds"); the scope is appended
+ * @property {(scope: string) => BindingsStorage} [storage] - Keep rebindings somewhere other than
+ *   localStorage, separately per scope. Takes the place of `storageKey`
  * @property {HTMLElement} [host] - Makes a command palette, cheatsheet, settings panel and context menu inside it
  * @property {KeybindsOptions} [listen] - Passed on to keybinds(): target, capture, wheel, onExecute
  */
@@ -4320,7 +4366,9 @@ export class CommandHub extends EventTarget {
    */
   constructor(options = {}) {
     super()
-    this._storageKey = options.storageKey ?? 'keybinds'
+    const key = options.storageKey ?? 'keybinds'
+    /** @type {(scope: string) => BindingsStorage} */
+    this._storage = options.storage ?? ((scope) => localStorageBindings(`${key}:${scope}`))
     this._listen = options.listen ?? {}
     /** @type {(def: D) => Command} */
     this._adapt = options.adapt ?? ((def) => /** @type {Command} */ (/** @type {unknown} */ (def)))
@@ -4461,7 +4509,8 @@ export class CommandHub extends EventTarget {
       schema[d.id] = { label: d.label, category: d.category, description: d.description, keys: d.keys ?? [], mouse: d.mouse, hidden: d.hidden }
     }
     this._store?.removeEventListener('change', this._storeListener)
-    this._store = new BindingsStore(schema, `${this._storageKey}:${this._scope}`)
+    this._store?.dispose()
+    this._store = new BindingsStore(schema, this._storage(this._scope))
     this._store.addEventListener('change', this._storeListener)
     const bound = this._store.get()
 
@@ -4599,6 +4648,7 @@ export class CommandHub extends EventTarget {
     this._unbind?.()
     this._unbind = null
     this._store?.removeEventListener('change', this._storeListener)
+    this._store?.dispose()
     this._buttonRoots.clear()
     if (this._onFocusIn) document.removeEventListener('focusin', this._onFocusIn, true)
   }

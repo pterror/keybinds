@@ -32,6 +32,7 @@ export type Command = {
     hidden?: boolean | undefined;
     captureInput?: boolean | undefined;
     menu?: string | string[] | undefined;
+    rank?: number | undefined;
 };
 export type MatchResult = {
     score: number;
@@ -258,6 +259,11 @@ export type BindingsChangeDetail<T extends Schema> = {
     overrides: BindingOverrides;
 };
 export type BindingsChangeEvent<T extends Schema> = CustomEvent<BindingsChangeDetail<T>>;
+export type BindingsStorage = {
+    load: () => BindingOverrides;
+    save: (overrides: BindingOverrides) => void;
+    subscribe?: (onChange: (overrides: BindingOverrides) => void) => () => void;
+};
 /**
  * @template {Schema} T
  * @typedef {{ bindings: T, overrides: BindingOverrides }} BindingsChangeDetail
@@ -267,15 +273,35 @@ export type BindingsChangeEvent<T extends Schema> = CustomEvent<BindingsChangeDe
  * @typedef {CustomEvent<BindingsChangeDetail<T>>} BindingsChangeEvent
  */
 /**
- * Reactive bindings store with localStorage persistence
+ * Where a BindingsStore keeps people's overrides
  *
- * Extends EventTarget - dispatches 'change' events when bindings are saved.
+ * @typedef {Object} BindingsStorage
+ * @property {() => BindingOverrides} load - The current overrides
+ * @property {(overrides: BindingOverrides) => void} save
+ * @property {(onChange: (overrides: BindingOverrides) => void) => () => void} [subscribe] - For storage
+ *   that can change from elsewhere (another tab, an undo, sync): the store follows it. Returns an
+ *   unsubscribe function
+ */
+/**
+ * Storage that keeps overrides in localStorage under one key
+ *
+ * @param {string} key
+ * @returns {BindingsStorage}
+ */
+export declare function localStorageBindings(key: string): BindingsStorage;
+/**
+ * Reactive bindings store, persisted to localStorage or to any {@link BindingsStorage}
+ *
+ * Extends EventTarget - dispatches 'change' events when bindings are saved, or when the storage
+ * changes from elsewhere.
  *
  * @template {Schema} T
  * @extends {EventTarget}
  *
  * @example
  * const store = new BindingsStore(schema, 'myapp:keybinds')
+ * // or keep them anywhere:
+ * const store = new BindingsStore(schema, { load: () => prefs.keys ?? {}, save: (o) => { prefs.keys = o } })
  *
  * // Get current bindings (merged schema + overrides)
  * const bindings = store.get()
@@ -290,16 +316,14 @@ export type BindingsChangeEvent<T extends Schema> = CustomEvent<BindingsChangeDe
  */
 export declare class BindingsStore<T extends Schema> extends EventTarget {
     /** @type {T} */ schema: T;
-    /** @type {string} */ storageKey: string;
+    /** @type {BindingsStorage} */ storage: BindingsStorage;
     /** @type {BindingOverrides} */ overrides: BindingOverrides;
     /** @type {T} */ bindings: T;
     /**
      * @param {T} schema - Default bindings schema
-     * @param {string} storageKey - localStorage key
+     * @param {string | BindingsStorage} storage - A localStorage key, or where to keep overrides
      */
-    constructor(schema: T, storageKey: string);
-    /** @returns {BindingOverrides} */
-    loadOverrides(): BindingOverrides;
+    constructor(schema: T, storage: string | BindingsStorage);
     /** Get current bindings (schema merged with overrides) */
     get(): T;
     /** Get current overrides only */
@@ -309,6 +333,11 @@ export declare class BindingsStore<T extends Schema> extends EventTarget {
      * @param {BindingOverrides} newOverrides
      */
     save(newOverrides: BindingOverrides): void;
+    /** Stop following the storage's changes */
+    dispose(): void;
+    private 
+    /** @private */
+    _changed;
 }
 /**
  * Simple substring matcher (case-insensitive)
@@ -365,6 +394,7 @@ export declare function findConflict(schema: Schema, bindingStr: string, type: '
  *   open         - Show/hide the palette
  *   auto-trigger - Enable default $mod+K trigger
  *   placeholder  - Input placeholder text (default: "Type a command...")
+ *   hide-inactive - List only commands that apply now (otherwise the rest are shown disabled)
  *
  * Properties:
  *   commands: Command[]     - Array of command definitions
@@ -441,6 +471,7 @@ export declare class CommandPalette extends HTMLElement {
         hidden?: boolean | undefined;
         captureInput?: boolean | undefined;
         menu?: string | string[] | undefined;
+        rank?: number | undefined;
         active: boolean;
         score: number;
     }[];
@@ -943,12 +974,15 @@ export type ComponentKind = keyof typeof COMPONENTS;
 export declare function createComponent<K extends ComponentKind>(kind: K): InstanceType<(typeof COMPONENTS)[K]>;
 export type CommandHubOptions = {
     storageKey?: string;
+    storage?: (scope: string) => BindingsStorage;
     host?: HTMLElement;
     listen?: KeybindsOptions;
 };
 /**
  * @typedef {Object} CommandHubOptions
- * @property {string} [storageKey] - Where people's rebindings are kept (default "keybinds"); the scope is appended
+ * @property {string} [storageKey] - localStorage key for people's rebindings (default "keybinds"); the scope is appended
+ * @property {(scope: string) => BindingsStorage} [storage] - Keep rebindings somewhere other than
+ *   localStorage, separately per scope. Takes the place of `storageKey`
  * @property {HTMLElement} [host] - Makes a command palette, cheatsheet, settings panel and context menu inside it
  * @property {KeybindsOptions} [listen] - Passed on to keybinds(): target, capture, wheel, onExecute
  */

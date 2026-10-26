@@ -13,7 +13,7 @@ Single-file library (`src/index.js`) with JSDoc types checked via `jsconfig.json
 Key concepts:
 - **Commands** — data objects combining triggers (keys/mouse), labels, context conditions, and handlers
 - **Schema/Handlers split** — `defineSchema` for binding data, `fromBindings` to attach handlers
-- **BindingsStore** — reactive localStorage-persisted user overrides
+- **BindingsStore** — reactive user overrides, kept in localStorage or any `BindingsStorage`
 - **Web components** — palette, cheatsheet, settings, context menus, radial menu (shadow DOM; each marks itself `data-keybinds="<kind>"`; `styles/palette.css` themes them from `--keybinds-*` variables)
 - **CommandHub** — commands from many sources, one rebindable store, keys, components and `data-command` buttons kept in step
 

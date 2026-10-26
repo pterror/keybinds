@@ -179,6 +179,16 @@ store.addEventListener('change', (e) => {
 })
 ```
 
+The overrides don't have to live in localStorage. Give the store anything with `load` and `save`, e.g. your app's own state or a server. Add `subscribe` if they can change from elsewhere (an undo, another tab, sync) and the store will follow along:
+
+```js
+const store = new BindingsStore(schema, {
+  load: () => settings.get('keys') ?? {},
+  save: (overrides) => settings.set('keys', overrides),
+  subscribe: (onChange) => settings.watch('keys', onChange), // returns an unsubscribe function
+})
+```
+
 ## Commands From Many Places: CommandHub
 
 When commands come from several parts of an app, and come and go with its state, `CommandHub` does all of the above in one place: it collects commands from every source, derives the schema from them, keeps each person's rebindings, listens for keys, and keeps the components and any command buttons up to date.
@@ -188,7 +198,8 @@ import { CommandHub } from 'keybinds'
 import 'keybinds/styles/palette.css'
 
 const hub = new CommandHub({
-  storageKey: 'myapp:keys',   // rebindings are kept under "myapp:keys:<scope>"
+  storageKey: 'myapp:keys',   // rebindings are kept under "myapp:keys:<scope>"; or pass
+                              // storage: (scope) => ({ load, save }) to keep them elsewhere
   host: document.body,        // makes a palette, cheatsheet, settings panel and context menu here
   listen: { capture: true },  // keybinds() options; capture lets a command take a key before an editor does
 })

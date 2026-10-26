@@ -43,7 +43,7 @@ document.querySelector('keybinds-command-palette').commands = commands
 
 - **Schema-driven** — define bindings as data, separate triggers from handlers
 - **Context-aware** — commands activate based on application state
-- **User-rebindable** — `BindingsStore` persists overrides to localStorage
+- **User-rebindable** — `BindingsStore` persists overrides to localStorage, or to any storage you give it
 - **Discoverable** — built-in `<keybinds-command-palette>`, `<keybinds-cheatsheet>`, `<keybinds-basic-context-menu>`/`<keybinds-context-menu>`, and `<keybinds-settings>` components
 - **Framework-agnostic** — pure JS core, works anywhere
 
