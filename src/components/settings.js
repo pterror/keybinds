@@ -1,4 +1,4 @@
-import { markKind, findConflict, flipRelease, splitRelease, bindingLookup, formatBinding } from '../core.js'
+import { RELEASE_SUFFIX, markKind, findConflict, flipRelease, splitRelease, bindingLookup, formatBinding } from '../core.js'
 import { keysUI } from '../keys-ui.js'
 
 /** @typedef {import('../core.js').InputUI} Input */
@@ -15,6 +15,8 @@ import { keysUI } from '../keys-ui.js'
  *   store: BindingsStore  - Reactive bindings store
  *   inputs: Input[]       - Which bindings are shown and can be recorded (default: keys only)
  *   releases: boolean     - Offer release bindings ("k:up"); set when keybinds() has releases() (default: false)
+ *   holds: boolean        - Offer hold and tap bindings ("k:hold", "k:tap"), with holds() (default: false)
+ *   sequences: boolean    - Offer bindings of several steps ("g i"), with sequences() (default: false)
  *   open: boolean         - Show/hide the settings panel
  *
  * Events:
@@ -62,16 +64,27 @@ export class KeybindSettings extends HTMLElement {
     this._inputs = [keysUI()]
     /** Whether release bindings ("k:up") are on, so they can be recorded and switched to */
     this.releases = false
+    /** Whether hold and tap bindings ("k:hold", "k:tap") are on, so they can be recorded */
+    this.holds = false
+    /** Whether bindings of several steps ("g i") are on, so they can be recorded */
+    this.sequences = false
     /** @type {(() => void)[]} */
     this._unwatch = []
     /** @type {{ commandId: string, input: Input, index: number | null } | null} */
     this._recording = null
     /** @type {{ commandId: string, label: string, bindingStr: string, input: Input, index: number | null, flip?: boolean } | null} */
     this._conflict = null
-    /** Whether recording captures a release (the input comes up) instead of a press */
-    this._recordRelease = false
-    /** @type {HTMLElement | null} */
-    this._releaseToggle = null
+    /** What recording captures: a press (""), or a release, hold or tap (":up", ":hold", ":tap") */
+    this._recordSuffix = ''
+    /** Whether recording takes several steps, and the steps so far */
+    this._recordSequence = false
+    /** @type {string[]} */
+    this._steps = []
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    this._stepTimer = undefined
+    /** The switches in the recording prompt, whose clicks aren't recorded */
+    /** @type {HTMLElement[]} */
+    this._toggles = []
     /** @type {(() => void) | null} */
     this._stopRecorder = null
     /** @type {((e: Event) => void) | null} */
@@ -234,15 +247,15 @@ export class KeybindSettings extends HTMLElement {
     this._render()
   }
 
-  // (Re)starts the input's recorder, for a press or a release as the toggle says
+  // (Re)starts the input's recorder, for a press or a release as the switches say
   _record() {
     this._stopRecorder?.()
     this._stopRecorder = null
     const input = this._recording?.input
     if (!input?.record) return
     /** @param {Event} e */
-    const ignore = (e) => !!this._releaseToggle && e.composedPath().includes(this._releaseToggle)
-    this._stopRecorder = input.record({ release: this._recordRelease, ignore }, (b) => this._handleRecordedBinding(b))
+    const ignore = (e) => this._toggles.some((t) => e.composedPath().includes(t))
+    this._stopRecorder = input.record({ release: this._recordSuffix === RELEASE_SUFFIX, ignore }, (b) => this._recorded(b))
   }
 
   _stopRecording() {
@@ -252,17 +265,60 @@ export class KeybindSettings extends HTMLElement {
       window.removeEventListener('keydown', this._escapeHandler, true)
       this._escapeHandler = null
     }
+    clearTimeout(this._stepTimer)
     this._recording = null
     this._conflict = null
-    this._recordRelease = false
-    this._releaseToggle = null
+    this._recordSuffix = ''
+    this._recordSequence = false
+    this._steps = []
+    this._toggles = []
   }
 
-  /** @param {boolean} release */
-  _setRecordRelease(release) {
-    this._recordRelease = release
+  /**
+   * Switch what recording captures; choosing what's already chosen goes back to a press
+   * @param {string} suffix - "", ":up", ":hold" or ":tap"
+   */
+  _setRecordSuffix(suffix) {
+    this._recordSuffix = this._recordSuffix === suffix ? '' : suffix
+    if (this._recordSuffix) this._recordSequence = false
     this._record()
     this._render()
+  }
+
+  _toggleSequence() {
+    this._recordSequence = !this._recordSequence
+    if (this._recordSequence) this._recordSuffix = ''
+    this._steps = []
+    clearTimeout(this._stepTimer)
+    this._record()
+    this._render()
+  }
+
+  // How long recording a sequence waits after a step before taking the steps so far
+  static SEQUENCE_PAUSE = 1000
+
+  /**
+   * A binding was recorded: one step of a sequence, or the whole binding
+   * @param {string} binding
+   */
+  _recorded(binding) {
+    const input = /** @type {Input} */ (this._recording?.input)
+    // A binding that can't be held or tapped (a scroll) isn't one to record while that's asked for
+    if (this._recordSuffix && input.release && !input.release(binding)) return
+    const full = this._recordSuffix && this._recordSuffix !== RELEASE_SUFFIX ? binding + this._recordSuffix : binding
+    if (!this._recordSequence) return this._handleRecordedBinding(full)
+    this._steps.push(binding)
+    clearTimeout(this._stepTimer)
+    this._stepTimer = setTimeout(() => this._finishSequence(), KeybindSettings.SEQUENCE_PAUSE)
+    this._record()
+    this._render()
+  }
+
+  // Takes the steps recorded so far as the binding
+  _finishSequence() {
+    clearTimeout(this._stepTimer)
+    if (this._steps.length === 0) return
+    this._handleRecordedBinding(this._steps.join(' '))
   }
 
   /**
@@ -287,17 +343,21 @@ export class KeybindSettings extends HTMLElement {
   }
 
   /**
-   * Release switch inside the recording overlay
+   * A switch inside the recording prompt
+   * @param {string} name - Its part name: "release" gives "recording-release" and, while on, "recording-release-on"
+   * @param {string} label
+   * @param {boolean} on
+   * @param {() => void} onClick
    * @returns {HTMLElement}
    */
-  _renderReleaseToggle() {
+  _renderToggle(name, label, on, onClick) {
     const toggle = document.createElement('button')
-    toggle.className = 'settings__recording-release'
-    toggle.setAttribute('part', this._recordRelease ? 'recording-release recording-release-on' : 'recording-release')
-    toggle.setAttribute('aria-pressed', String(this._recordRelease))
-    toggle.textContent = 'Release'
-    toggle.addEventListener('click', () => this._setRecordRelease(!this._recordRelease))
-    this._releaseToggle = toggle
+    toggle.className = `settings__recording-${name}`
+    toggle.setAttribute('part', on ? `recording-${name} recording-${name}-on` : `recording-${name}`)
+    toggle.setAttribute('aria-pressed', String(on))
+    toggle.textContent = label
+    toggle.addEventListener('click', onClick)
+    this._toggles.push(toggle)
     return toggle
   }
 
@@ -510,7 +570,8 @@ export class KeybindSettings extends HTMLElement {
   }
 
   /**
-   * What's shown while recording: the input's prompt, and for inputs with releases, the Release switch
+   * What's shown while recording: the input's prompt, or the steps so far, and switches for what
+   * to record: a release, hold or tap instead of a press, or several steps
    * @returns {HTMLElement}
    */
   _renderRecording() {
@@ -521,9 +582,25 @@ export class KeybindSettings extends HTMLElement {
     const overlay = document.createElement('span')
     overlay.className = 'settings__recording-overlay'
     overlay.setAttribute('part', 'recording-overlay')
-    overlay.textContent = input.prompt?.(this._recordRelease) ?? 'Waiting...'
+    overlay.textContent = this._steps.length > 0
+      ? `${formatBinding(input, this._steps.join(' ')).join(' ')} then...`
+      : input.prompt?.(this._recordSuffix === RELEASE_SUFFIX) ?? 'Waiting...'
     wrapper.appendChild(overlay)
-    if (this.releases && input.release) wrapper.appendChild(this._renderReleaseToggle())
+    this._toggles = []
+    const suffix = this._recordSuffix
+    if (this.releases && input.release) {
+      wrapper.appendChild(this._renderToggle('release', 'Release', suffix === RELEASE_SUFFIX, () => this._setRecordSuffix(RELEASE_SUFFIX)))
+    }
+    if (this.holds && input.release) {
+      wrapper.appendChild(this._renderToggle('hold', 'Hold', suffix === ':hold', () => this._setRecordSuffix(':hold')))
+      wrapper.appendChild(this._renderToggle('tap', 'Tap', suffix === ':tap', () => this._setRecordSuffix(':tap')))
+    }
+    if (this.sequences && !input.axis) {
+      wrapper.appendChild(this._renderToggle('sequence', 'Steps', this._recordSequence, () => this._toggleSequence()))
+    }
+    if (this._steps.length > 0) {
+      wrapper.appendChild(this._renderToggle('done', 'Done', false, () => this._finishSequence()))
+    }
     return wrapper
   }
 

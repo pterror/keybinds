@@ -99,8 +99,17 @@ export function eventToBindingString(event, syntax = []) {
  * @returns {InputUI}
  */
 export function keysUI(...syntax) {
+  const watched = syntax.filter((s) => s.watch)
   return {
     ...keys(...syntax),
+    // How keys are shown can change (a layout() following the person's layout)
+    ...(watched.length > 0 && {
+      /** @param {() => void} onChange */
+      watch: (onChange) => {
+        const stops = watched.map((s) => /** @type {NonNullable<KeySyntax['watch']>} */ (s.watch)(onChange))
+        return () => { for (const stop of stops) stop() }
+      },
+    }),
     label: 'Key',
     format: (binding) => formatKeyParts(binding, syntax),
     release: () => true,

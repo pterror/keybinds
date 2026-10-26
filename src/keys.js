@@ -26,6 +26,7 @@ const MODIFIER_KEYS = ['Shift', 'Control', 'Alt', 'Meta']
  * @property {(key: string) => string | undefined} [shifted] - What a binding with Shift means instead
  * @property {(key: string, prefix: string, suffix: string) => string[]} [lookups] - More lookups for a key event
  * @property {(name: string) => string | undefined} [glyph] - How a key is shown, for display pieces like layout()
+ * @property {(onChange: () => void) => () => void} [watch] - Follows how keys are shown changing
  */
 
 // Named keys, by the name a key event reports (event.key, or event.code for physical keys)

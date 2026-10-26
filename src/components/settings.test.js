@@ -383,3 +383,99 @@ describe('KeybindSettings release recording', () => {
     el.remove()
   })
 })
+
+describe('KeybindSettings recording holds, taps and sequences', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    if (!customElements.get('keybinds-settings')) customElements.define('keybinds-settings', KeybindSettings)
+  })
+
+  /** @param {{ holds?: boolean, sequences?: boolean }} on */
+  function setup(on) {
+    const el = /** @type {import('../index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
+    el.inputs = ALL.inputs
+    el.holds = !!on.holds
+    el.sequences = !!on.sequences
+    const store = new BindingsStore({ go: { label: 'Go', keys: ['space'], mouse: ['scrollup'] } }, 'test:steps-settings')
+    el.store = store
+    el.dispatchEvent = () => true
+    document.body.appendChild(el)
+    el.open = true
+    const shadow = /** @type {ShadowRoot} */ (el.shadowRoot)
+    /** @param {string} part */
+    const byPart = (part) => /** @type {HTMLElement[]} */ (Array.from(shadow.querySelectorAll('[part]')).filter(e => (e.getAttribute('part') ?? '').split(' ').includes(part)))
+    return { el, store, byPart }
+  }
+  /** @param {string} key */
+  const tap = (key) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, code: `Key${key.toUpperCase()}`, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keyup', { key, code: `Key${key.toUpperCase()}`, cancelable: true }))
+  }
+
+  test('switches show only for the syntax that is on', () => {
+    const off = setup({})
+    off.byPart('add-key')[0]?.click()
+    expect(off.byPart('recording-hold').length).toBe(0)
+    expect(off.byPart('recording-sequence').length).toBe(0)
+    off.el.remove()
+    const on = setup({ holds: true, sequences: true })
+    on.byPart('add-key')[0]?.click()
+    expect(on.byPart('recording-hold').length).toBe(1)
+    expect(on.byPart('recording-tap').length).toBe(1)
+    expect(on.byPart('recording-sequence').length).toBe(1)
+    on.el.remove()
+  })
+
+  test('a key recorded with Hold or Tap on becomes k:hold or k:tap', () => {
+    const { el, store, byPart } = setup({ holds: true })
+    byPart('add-key')[0]?.click()
+    byPart('recording-hold')[0]?.click()
+    tap('k')
+    byPart('add-key')[0]?.click()
+    byPart('recording-tap')[0]?.click()
+    tap('j')
+    expect(store.get()['go']?.keys).toEqual(['space', 'k:hold', 'j:tap'])
+    el.remove()
+  })
+
+  test('scrolling is not recorded while Hold or Tap is on; a button is', () => {
+    const { el, store, byPart } = setup({ holds: true })
+    byPart('add-mouse')[0]?.click()
+    byPart('recording-hold')[0]?.click()
+    window.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, cancelable: true }))
+    expect(store.get()['go']?.mouse).toEqual(['scrollup'])
+    window.dispatchEvent(new MouseEvent('mousedown', { button: 1, cancelable: true }))
+    expect(store.get()['go']?.mouse).toEqual(['scrollup', 'middle:hold'])
+    el.remove()
+  })
+
+  test('with Steps on, keys are recorded one after another until Done, or a pause', async () => {
+    const { el, store, byPart } = setup({ sequences: true })
+    byPart('add-key')[0]?.click()
+    byPart('recording-sequence')[0]?.click()
+    tap('g')
+    tap('i')
+    expect(byPart('recording-overlay')[0]?.textContent).toBe('G then I then...')
+    byPart('recording-done')[0]?.click()
+    expect(store.get()['go']?.keys).toEqual(['space', 'g i'])
+
+    const pause = KeybindSettings.SEQUENCE_PAUSE
+    KeybindSettings.SEQUENCE_PAUSE = 10
+    byPart('add-key')[0]?.click()
+    byPart('recording-sequence')[0]?.click()
+    tap('j')
+    tap('j')
+    await new Promise((r) => setTimeout(r, 30))
+    expect(store.get()['go']?.keys).toEqual(['space', 'g i', 'j j'])
+    KeybindSettings.SEQUENCE_PAUSE = pause
+    el.remove()
+  })
+
+  test('recorded sequences and holds show as steps and what they wait for', () => {
+    const { el, store, byPart } = setup({ holds: true, sequences: true })
+    store.save({ go: { keys: ['ctrl+k ctrl+s', 'k:hold'] } })
+    const chips = byPart('binding-keys').map((c) => Array.from(c.querySelectorAll('kbd')).map((k) => k.textContent))
+    expect(chips).toEqual([['Ctrl', 'K', 'then', 'Ctrl', 'S'], ['K', 'Hold'], ['Scroll ↑']])
+    el.remove()
+  })
+})

@@ -200,10 +200,12 @@ keys: ['space:tap']       // runs when space comes up sooner than that
 Physical keys (`slash`, `digit1`, `bracketleft`) are shown as the character they type on a US layout. Where the browser can tell the person's own layout (Chromium, through `navigator.keyboard`), show them as that types them instead:
 
 ```js
-import { keysUI, layout, loadLayout } from 'keybinds'
+import { keysUI, layout } from 'keybinds'
 
-const input = keysUI(layout(await loadLayout()))  // shift+slash shows as "Shift -" on a German layout
+const input = keysUI(layout())  // shift+slash shows as "Shift -" on a German layout
 ```
+
+Browsers say nothing when someone switches layouts, so `layout()` looks again when the window gets focus back, and when a key types something other than the layout it has says it should; the settings panel and an open cheatsheet update then. `layout(await loadLayout())` shows one layout and nothing more.
 
 Letters and typed characters are bound by what they type, so they show as written.
 

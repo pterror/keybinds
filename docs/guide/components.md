@@ -127,6 +127,7 @@ Rebindable keyboard shortcuts panel with conflict detection.
 |----------|------|-------------|
 | `store` | `BindingsStore` | Reactive bindings store instance |
 | `inputs` | `InputUI[]` | Which bindings are shown and can be recorded (default: keys only) |
+| `releases`, `holds`, `sequences` | `boolean` | Offer recording release bindings (`k:up`), holds and taps (`k:hold`, `k:tap`), and steps (`g i`); the hub sets them from its options (default: false) |
 | `open` | `boolean` | Show/hide the settings panel |
 
 ### Attributes

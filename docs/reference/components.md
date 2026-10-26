@@ -134,6 +134,7 @@ Custom element: `<keybinds-settings>`
 |----------|------|-------------|
 | `store` | `BindingsStore` | Reactive bindings store instance |
 | `inputs` | `InputUI[]` | Which bindings are shown and can be recorded (default: keys only) |
+| `releases`, `holds`, `sequences` | `boolean` | Offer recording release bindings (`k:up`), holds and taps (`k:hold`, `k:tap`), and steps (`g i`); the hub sets them from its options (default: false) |
 | `open` | `boolean` | Visibility state |
 
 ### Attributes
@@ -178,6 +179,9 @@ Custom element: `<keybinds-settings>`
 | `binding-invert` | An axis source's Invert switch (`binding-invert-on` when inverted) |
 | `recording-overlay` | Recording prompt text |
 | `recording-release` | Release toggle in the recording prompt (`recording-release-on` while on) |
+| `recording-hold`, `recording-tap` | Hold and Tap toggles, with `holds` (`-on` while on) |
+| `recording-sequence` | Steps toggle, with `sequences`: keys are recorded one after another until Done or a pause of a second |
+| `recording-done` | Ends recording steps |
 | `conflict` | Conflict warning |
 | `conflict-accept` | Replace button |
 | `conflict-cancel` | Cancel button |

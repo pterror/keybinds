@@ -26,3 +26,54 @@ describe('keyboard layouts', () => {
     expect(await loadLayout()).toBeNull()
   })
 })
+
+describe('following the layout', () => {
+  /** @param {Map<string, string>} first */
+  const fakeKeyboard = (first) => {
+    let map = first
+    Object.defineProperty(navigator, 'keyboard', { value: { getLayoutMap: async () => map }, configurable: true })
+    return {
+      /** @param {Map<string, string>} next */
+      set: (next) => { map = next },
+      restore: () => { Object.defineProperty(navigator, 'keyboard', { value: undefined, configurable: true }) },
+    }
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0))
+  const us = new Map([['Slash', '/'], ['KeyZ', 'z']])
+
+  test('loads the layout, and looks again when the window gets focus back', async () => {
+    const keyboard = fakeKeyboard(us)
+    const piece = layout()
+    let changes = 0
+    piece.watch?.(() => { changes++ })
+    await settle()
+    expect(piece.glyph?.('slash')).toBe('/')
+    keyboard.set(german)
+    window.dispatchEvent(new Event('focus'))
+    await settle()
+    expect(piece.glyph?.('slash')).toBe('-')
+    expect(changes).toBe(2)
+    keyboard.restore()
+  })
+
+  test('a key typing something the layout did not say means it changed', async () => {
+    const keyboard = fakeKeyboard(us)
+    const piece = layout()
+    await settle()
+    keyboard.set(german)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', code: 'KeyZ' }))
+    await settle()
+    expect(piece.glyph?.('slash')).toBe('-')
+    keyboard.restore()
+  })
+
+  test('keysUI follows it, so the components showing bindings do', async () => {
+    const keyboard = fakeKeyboard(us)
+    const input = keysUI(layout())
+    let changes = 0
+    input.watch?.(() => { changes++ })
+    await settle()
+    expect(changes).toBe(1)
+    keyboard.restore()
+  })
+})

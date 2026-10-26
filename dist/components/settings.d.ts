@@ -14,6 +14,8 @@ export type AnyStore = import('../store.js').BindingsStore<any>;
  *   store: BindingsStore  - Reactive bindings store
  *   inputs: Input[]       - Which bindings are shown and can be recorded (default: keys only)
  *   releases: boolean     - Offer release bindings ("k:up"); set when keybinds() has releases() (default: false)
+ *   holds: boolean        - Offer hold and tap bindings ("k:hold", "k:tap"), with holds() (default: false)
+ *   sequences: boolean    - Offer bindings of several steps ("g i"), with sequences() (default: false)
  *   open: boolean         - Show/hide the settings panel
  *
  * Events:
@@ -84,8 +86,19 @@ export declare class KeybindSettings extends HTMLElement {
     _startRecording(commandId: string, input: Input, index: number | null): void;
     _record(): void;
     _stopRecording(): void;
-    /** @param {boolean} release */
-    _setRecordRelease(release: boolean): void;
+    /**
+     * Switch what recording captures; choosing what's already chosen goes back to a press
+     * @param {string} suffix - "", ":up", ":hold" or ":tap"
+     */
+    _setRecordSuffix(suffix: string): void;
+    _toggleSequence(): void;
+    static SEQUENCE_PAUSE: number;
+    /**
+     * A binding was recorded: one step of a sequence, or the whole binding
+     * @param {string} binding
+     */
+    _recorded(binding: string): void;
+    _finishSequence(): void;
     /**
      * Switch a stored binding to another form of it: its release, or inverted
      * @param {string} commandId
@@ -95,10 +108,14 @@ export declare class KeybindSettings extends HTMLElement {
      */
     _flip(commandId: string, input: Input, index: number, flipped: string): void;
     /**
-     * Release switch inside the recording overlay
+     * A switch inside the recording prompt
+     * @param {string} name - Its part name: "release" gives "recording-release" and, while on, "recording-release-on"
+     * @param {string} label
+     * @param {boolean} on
+     * @param {() => void} onClick
      * @returns {HTMLElement}
      */
-    _renderReleaseToggle(): HTMLElement;
+    _renderToggle(name: string, label: string, on: boolean, onClick: () => void): HTMLElement;
     /** @param {string} bindingStr */
     _handleRecordedBinding(bindingStr: string): void;
     /**
@@ -121,7 +138,8 @@ export declare class KeybindSettings extends HTMLElement {
     _resetAll(): void;
     _render(): void;
     /**
-     * What's shown while recording: the input's prompt, and for inputs with releases, the Release switch
+     * What's shown while recording: the input's prompt, or the steps so far, and switches for what
+     * to record: a release, hold or tap instead of a press, or several steps
      * @returns {HTMLElement}
      */
     _renderRecording(): HTMLElement;

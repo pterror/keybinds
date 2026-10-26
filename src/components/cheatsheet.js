@@ -49,7 +49,10 @@ export class KeybindCheatsheet extends HTMLElement {
   constructor() {
     super()
     /** How bindings are shown. @type {Input[]} */
-    this.inputs = [keysUI()]
+    this._inputs = [keysUI()]
+    /** Stops following how the inputs show bindings changing (a layout() switching) */
+    /** @type {(() => void)[]} */
+    this._unwatch = []
     /** @type {Command[]} */
     this._commands = []
     /** @type {Record<string, unknown>} */
@@ -76,6 +79,19 @@ export class KeybindCheatsheet extends HTMLElement {
     this._dialog = /** @type {HTMLElement} */ (shadow.querySelector('.cheatsheet__dialog'))
 
     this._backdrop.addEventListener('click', () => this._close())
+  }
+
+  get inputs() { return this._inputs }
+  set inputs(val) {
+    this._inputs = val || []
+    if (this.isConnected) this._watchInputs()
+    if (this.open) this._render()
+  }
+
+  // An open cheatsheet shows bindings as they look now
+  _watchInputs() {
+    for (const stop of this._unwatch) stop()
+    this._unwatch = this._inputs.flatMap((i) => i.watch ? [i.watch(() => { if (this.open) this._render() })] : [])
   }
 
   get commands() { return this._commands }
@@ -114,6 +130,7 @@ export class KeybindCheatsheet extends HTMLElement {
 
   connectedCallback() {
     markKind(this, 'cheatsheet')
+    this._watchInputs()
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
     }
@@ -121,6 +138,8 @@ export class KeybindCheatsheet extends HTMLElement {
 
   disconnectedCallback() {
     this._setupAutoTrigger(false)
+    for (const stop of this._unwatch) stop()
+    this._unwatch = []
   }
 
   /** @param {boolean} enable */

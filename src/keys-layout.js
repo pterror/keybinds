@@ -4,7 +4,7 @@
  * through navigator.keyboard.getLayoutMap(); elsewhere keys show as on a US layout.
  *
  * @example
- * const input = keysUI(layout(await loadLayout()))
+ * const input = keysUI(layout())  // follows the layout, and switches to it
  */
 
 /** @typedef {import('./keys.js').KeySyntax} KeySyntax */
@@ -33,17 +33,55 @@ export async function loadLayout() {
 }
 
 /**
- * For keysUI(layout(map)): shows physical keys as `map` types them. A null map changes nothing.
- * @param {Map<string, string> | null} map - From loadLayout()
+ * @param {Map<string, string> | null} a
+ * @param {Map<string, string> | null} b
+ */
+const sameLayout = (a, b) => a === b || (!!a && !!b && a.size === b.size && [...a].every(([k, v]) => b.get(k) === v))
+
+/**
+ * For keysUI(layout()): shows physical keys as the person's layout types them.
+ *
+ * Without a map, it loads the layout and follows it: browsers say nothing when someone switches
+ * layouts, so it looks again when the window gets focus back, and when a key types something other
+ * than the layout it has says it should. Components showing bindings update when it changes. Given
+ * a map (from loadLayout(), or null), it shows that one and nothing more.
+ * @param {Map<string, string> | null} [map]
  * @returns {KeySyntax}
  */
 export function layout(map) {
-  return {
+  let current = map ?? null
+  /** @type {Set<() => void>} */
+  const listeners = new Set()
+  /** @type {KeySyntax} */
+  const piece = {
     name: 'layout',
     glyph: (name) => {
       const code = CODES[name]
-      const typed = code ? map?.get(code) : undefined
-      return typed?.toUpperCase()
+      return (code ? current?.get(code) : undefined)?.toUpperCase()
+    },
+  }
+  if (map !== undefined || typeof window === 'undefined') return piece
+
+  const reload = async () => {
+    const next = await loadLayout()
+    if (sameLayout(next, current)) return
+    current = next
+    for (const l of listeners) l()
+  }
+  /** @param {KeyboardEvent} e */
+  const check = (e) => {
+    if (!current || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || [...e.key].length !== 1) return
+    const said = current.get(e.code)
+    if (said !== undefined && said !== e.key.toLowerCase()) void reload()
+  }
+  void reload()
+  window.addEventListener('focus', reload)
+  window.addEventListener('keydown', check, { capture: true, passive: true })
+  return {
+    ...piece,
+    watch(onChange) {
+      listeners.add(onChange)
+      return () => { listeners.delete(onChange) }
     },
   }
 }

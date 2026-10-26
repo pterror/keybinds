@@ -327,6 +327,8 @@ export class CommandHub extends EventTarget {
     if (this.menu) this.menu.commands = live
     if (this.settings) {
       this.settings.releases = !!this._options.releases
+      this.settings.holds = !!this._options.holds
+      this.settings.sequences = !!this._options.sequences
       this.settings.store = this._store
     }
     this.syncContext()

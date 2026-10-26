@@ -39,6 +39,9 @@ export declare class KeybindCheatsheet extends HTMLElement {
     static kind: string;
     static get observedAttributes(): string[];
     constructor();
+    get inputs(): import("../core.js").InputUI[];
+    set inputs(val: import("../core.js").InputUI[]);
+    _watchInputs(): void;
     get commands(): import("../core.js").Command[];
     set commands(val: import("../core.js").Command[]);
     get context(): Record<string, unknown>;

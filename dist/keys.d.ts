@@ -16,6 +16,7 @@ export type KeySyntax = {
     shifted?: (key: string) => string | undefined;
     lookups?: (key: string, prefix: string, suffix: string) => string[];
     glyph?: (name: string) => string | undefined;
+    watch?: (onChange: () => void) => () => void;
 };
 /** @typedef {import('./core.js').Modifiers} Modifiers */
 /** @typedef {import('./core.js').Input} Input */
@@ -33,6 +34,7 @@ export type KeySyntax = {
  * @property {(key: string) => string | undefined} [shifted] - What a binding with Shift means instead
  * @property {(key: string, prefix: string, suffix: string) => string[]} [lookups] - More lookups for a key event
  * @property {(name: string) => string | undefined} [glyph] - How a key is shown, for display pieces like layout()
+ * @property {(onChange: () => void) => () => void} [watch] - Follows how keys are shown changing
  */
 export declare const NAMED_KEY: RegExp;
 /**
