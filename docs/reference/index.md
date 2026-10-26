@@ -270,7 +270,8 @@ if (conflict) {
 | `syncContext()` | Push the current context to components and buttons |
 | `run(id, event?)` | Run a command if it's available; returns whether it ran |
 | `get(id)`, `all()` | The definitions as given |
-| `keysFor(id)`, `mouseFor(id)` | Current bindings as shown to people |
+| `keysFor(id)`, `mouseFor(id)`, `gamepadFor(id)` | Current bindings as shown to people |
+| `held(id)` | Whether a command is held down right now |
 | `mouseMatches(id, event)` | Whether a mouse press is one of the command's bindings |
 | `bindButtons(root)` | Make `[data-command]` elements under `root` run and gray out; returns a stopper |
 | `openPalette()`, `openMenu(tag, x, y)` | Open the components |
@@ -296,6 +297,7 @@ interface Command {
   category?: string
   keys?: string[]
   mouse?: string[]
+  gamepad?: string[]
   when?: (ctx: Record<string, unknown>) => boolean
   execute: (ctx: Record<string, unknown>, event?: Event) => unknown
   hidden?: boolean
@@ -315,9 +317,10 @@ interface BindingSchema {
   category?: string
   keys?: string[]
   mouse?: string[]
+  gamepad?: string[]
   hidden?: boolean
 }
 
 type Schema = Record<string, BindingSchema>
-type BindingOverrides = Record<string, { keys?: string[], mouse?: string[] }>
+type BindingOverrides = Record<string, { keys?: string[], mouse?: string[], gamepad?: string[] }>
 ```

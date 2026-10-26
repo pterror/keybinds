@@ -173,6 +173,7 @@ Custom element: `<keybinds-settings>`
 | `item-add` | Add binding container |
 | `add-key` | Add Key button |
 | `add-mouse` | Add Mouse button |
+| `add-gamepad` | Add Gamepad button (shown while a gamepad is connected) |
 | `recording-overlay` | Recording prompt text |
 | `recording-release` | Release toggle in the recording prompt (`recording-release-on` while on) |
 | `conflict` | Conflict warning |
@@ -300,6 +301,22 @@ function formatMouseParts(binding: string): string[]
 formatMouseParts('$mod+click')      // ["⌘", "Click"] on Mac, ["Ctrl", "Click"] elsewhere
 formatMouseParts('scrollup')        // ["Scroll ↑"]
 formatMouseParts('ctrl+scrolldown') // ["Ctrl", "Scroll ↓"] on Mac, ["Ctrl", "Scroll ↓"] elsewhere
+```
+
+---
+
+## formatGamepadParts(binding)
+
+Format a gamepad binding string into display-ready parts.
+
+```ts
+function formatGamepadParts(binding: string): string[]
+```
+
+```js
+formatGamepadParts('rt')     // ["RT"]
+formatGamepadParts('south:up') // ["A", "Release"]
+formatGamepadParts('up')     // ["D-pad ↑"]
 ```
 
 ---

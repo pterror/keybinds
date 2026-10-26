@@ -27,6 +27,7 @@ export type Command = {
     category?: string | undefined;
     keys?: string[] | undefined;
     mouse?: string[] | undefined;
+    gamepad?: string[] | undefined;
     when?: ((ctx: Record<string, unknown>) => boolean) | undefined;
     execute: (ctx: Record<string, unknown>, event?: Event) => unknown;
     hidden?: boolean | undefined;
@@ -54,6 +55,13 @@ export type ScoredCommand = Command & {
     score: number;
     positions?: number[];
 };
+/**
+ * Format a gamepad binding into display parts (e.g. "rt:up" -> ["RT", "Release"])
+ * @param {string} binding
+ * @returns {string[]}
+ */
+export declare function formatGamepadParts(binding: string): string[];
+export type BindingType = 'keys' | 'mouse' | 'gamepad';
 export type LooseBinding = {
     cmd: Command;
     mods: Modifiers;
@@ -63,6 +71,7 @@ export type LookupTables = {
     mouse: Map<string, Command[]>;
     looseKeys: Map<string, LooseBinding[]>;
     looseMouse: Map<string, LooseBinding[]>;
+    gamepad: Map<string, Command[]>;
 };
 export type KeybindsOptions = {
     target?: EventTarget;
@@ -209,6 +218,7 @@ export type BindingSchema = {
     category?: string | undefined;
     keys?: string[] | undefined;
     mouse?: string[] | undefined;
+    gamepad?: string[] | undefined;
     hidden?: boolean | undefined;
     menu?: string | string[] | undefined;
 };
@@ -220,6 +230,7 @@ export type Schema = Record<string, BindingSchema>;
  * @property {string | undefined} [category] - Group for command palette
  * @property {string[] | undefined} [keys] - Default keyboard triggers
  * @property {string[] | undefined} [mouse] - Default mouse triggers
+ * @property {string[] | undefined} [gamepad] - Default gamepad button triggers
  * @property {boolean | undefined} [hidden] - Hide from search/settings
  * @property {string | string[] | undefined} [menu] - Context menu tag(s)
  */
@@ -236,9 +247,10 @@ export declare function defineSchema<T extends Schema>(schema: T): T;
 export type BindingOverrides = Record<string, {
     keys?: string[];
     mouse?: string[];
+    gamepad?: string[];
 }>;
 /**
- * @typedef {Record<string, { keys?: string[], mouse?: string[] }>} BindingOverrides
+ * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[] }>} BindingOverrides
  */
 /**
  * Merge schema with user overrides
@@ -394,11 +406,11 @@ export declare function eventToMouseBindingString(event: MouseEvent): string | n
  *
  * @param {Schema} schema - The binding schema to check against
  * @param {string} bindingStr - The binding string to check
- * @param {'keys' | 'mouse'} type - Whether this is a key or mouse binding
+ * @param {BindingType} type - Whether this is a key, mouse or gamepad binding
  * @param {string} [excludeId] - Command ID to exclude from conflict check
  * @returns {{ commandId: string, label: string } | null}
  */
-export declare function findConflict(schema: Schema, bindingStr: string, type: 'keys' | 'mouse', excludeId?: string): {
+export declare function findConflict(schema: Schema, bindingStr: string, type: BindingType, excludeId?: string): {
     commandId: string;
     label: string;
 } | null;
@@ -481,6 +493,7 @@ export declare class CommandPalette extends HTMLElement {
         category?: string | undefined;
         keys?: string[] | undefined;
         mouse?: string[] | undefined;
+        gamepad?: string[] | undefined;
         when?: ((ctx: Record<string, unknown>) => boolean) | undefined;
         execute: (ctx: Record<string, unknown>, event?: Event | undefined) => unknown;
         hidden?: boolean | undefined;
@@ -658,37 +671,40 @@ export declare class KeybindSettings extends HTMLElement {
     /**
      * Get the effective bindings for a command (overrides merged with schema)
      * @param {string} commandId
-     * @returns {{ keys: string[], mouse: string[] }}
+     * @returns {{ keys: string[], mouse: string[], gamepad: string[] }}
      */
     _getBindings(commandId: string): {
         keys: string[];
         mouse: string[];
+        gamepad: string[];
     };
     /**
      * Save binding changes, cleaning up overrides that match defaults
      * @param {string} commandId
-     * @param {{ keys: string[], mouse: string[] }} newBindings
+     * @param {{ keys: string[], mouse: string[], gamepad: string[] }} newBindings
      */
     _saveBindings(commandId: string, newBindings: {
         keys: string[];
         mouse: string[];
+        gamepad: string[];
     }): void;
     /**
      * @param {string} commandId
-     * @param {'keys' | 'mouse'} type
+     * @param {BindingType} type
      * @param {number | null} index - null for adding, number for replacing
      */
-    _startRecording(commandId: string, type: 'keys' | 'mouse', index: number | null): void;
+    _startRecording(commandId: string, type: BindingType, index: number | null): void;
+    _recordGamepad(): void;
     _stopRecording(): void;
     /** @param {boolean} release */
     _setRecordRelease(release: boolean): void;
     /**
      * Switch a stored binding between its press and release form
      * @param {string} commandId
-     * @param {'keys' | 'mouse'} type
+     * @param {BindingType} type
      * @param {number} index
      */
-    _flipRelease(commandId: string, type: 'keys' | 'mouse', index: number): void;
+    _flipRelease(commandId: string, type: BindingType, index: number): void;
     /**
      * Release switch inside the recording overlay
      * @returns {HTMLElement}
@@ -700,31 +716,31 @@ export declare class KeybindSettings extends HTMLElement {
     _handleRecordedBinding(bindingStr: string): void;
     /**
      * @param {string} commandId
-     * @param {'keys' | 'mouse'} type
+     * @param {BindingType} type
      * @param {number | null} index
      * @param {string} bindingStr
      */
-    _applyBinding(commandId: string, type: 'keys' | 'mouse', index: number | null, bindingStr: string): void;
+    _applyBinding(commandId: string, type: BindingType, index: number | null, bindingStr: string): void;
     _acceptConflict(): void;
     _cancelConflict(): void;
     /**
      * @param {string} commandId
-     * @param {'keys' | 'mouse'} type
+     * @param {BindingType} type
      * @param {number} index
      */
-    _removeBinding(commandId: string, type: 'keys' | 'mouse', index: number): void;
+    _removeBinding(commandId: string, type: BindingType, index: number): void;
     /** @param {string} commandId */
     _resetCommand(commandId: string): void;
     _resetAll(): void;
     _render(): void;
     /**
      * @param {string} commandId
-     * @param {'keys' | 'mouse'} type
+     * @param {BindingType} type
      * @param {number} index
      * @param {string} bindingStr
      * @returns {HTMLElement}
      */
-    _renderBinding(commandId: string, type: 'keys' | 'mouse', index: number, bindingStr: string): HTMLElement;
+    _renderBinding(commandId: string, type: BindingType, index: number, bindingStr: string): HTMLElement;
     /** @returns {HTMLElement} */
     _renderConflict(): HTMLElement;
 }
@@ -1017,7 +1033,7 @@ export type CommandHubOptions = {
  * hub.refresh()
  * hub.bindButtons(toolbar) // <button data-command="save">Save</button>
  *
- * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, hidden?: boolean | undefined }} [D=Command]
+ * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, gamepad?: string[] | undefined, hidden?: boolean | undefined }} [D=Command]
  * @template {object} [C=Record<string, unknown>] - The context `when` conditions see
  */
 export declare class CommandHub<D extends {
@@ -1027,6 +1043,7 @@ export declare class CommandHub<D extends {
     description?: string | undefined;
     keys?: string[] | undefined;
     mouse?: string[] | undefined;
+    gamepad?: string[] | undefined;
     hidden?: boolean | undefined;
 } = Command, C extends object = Record<string, unknown>> extends EventTarget {
     /** @type {CommandPalette | null} */
@@ -1110,6 +1127,12 @@ export declare class CommandHub<D extends {
      * @returns {string[]}
      */
     mouseFor(id: string): string[];
+    /**
+     * The gamepad bindings of a command right now, as shown to people (e.g. "RT").
+     * @param {string} id
+     * @returns {string[]}
+     */
+    gamepadFor(id: string): string[];
     /**
      * Whether a mouse press is one of a command's press bindings (same button, same modifiers), for
      * code that handles the press itself, like a drag that should start on a rebindable button.

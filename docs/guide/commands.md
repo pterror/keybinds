@@ -12,6 +12,7 @@ interface Command {
   category?: string    // Group for organization
   keys?: string[]      // Keyboard triggers
   mouse?: string[]     // Mouse triggers
+  gamepad?: string[]   // Gamepad button triggers
   when?: (ctx) => bool // Activation condition
   execute: (ctx) => any // Action to perform
   hidden?: bool        // Hide from search
@@ -56,6 +57,17 @@ mouse: ['Forward']      // Side button away from the user (ForwardClick also wor
 ```
 
 While a command's press on Back or Forward fires, the browser's history navigation for that press is canceled (mousedown, mouseup and auxclick).
+
+## Gamepad Bindings
+
+```js
+gamepad: ['a']          // the bottom face button (A on Xbox, cross on PlayStation)
+gamepad: ['rt', 'rt:up'] // right trigger, pressed and released
+```
+
+**Buttons:** `a`, `b`, `x`, `y` (face buttons by position; `south`, `east`, `west`, `north` also work), `lb`, `rb`, `lt`, `rt`, `back`, `start`, `ls`, `rs` (stick clicks), `up`, `down`, `left`, `right` (d-pad), `home`. These are the browser's standard gamepad layout. Gamepad bindings take no modifiers.
+
+Gamepads have no events, so their buttons are read every animation frame, only while some command has a gamepad binding and a pad is connected. Any connected pad triggers them. A button already down when a pad is first seen isn't a press, and a pad that disconnects lets go of whatever it held. `execute` gets a `gamepadbuttondown` or `gamepadbuttonup` event whose `detail` is `{ gamepad, button }`. Browsers only show a page its gamepads after a button is pressed on one.
 
 ## Press and Release Bindings
 

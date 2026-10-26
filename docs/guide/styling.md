@@ -123,6 +123,7 @@ Target shadow DOM elements using CSS `::part()`:
 | `item-add` | Add binding container |
 | `add-key` | Add Key button |
 | `add-mouse` | Add Mouse button |
+| `add-gamepad` | Add Gamepad button (shown while a gamepad is connected) |
 | `recording-overlay` | Recording prompt text |
 | `recording-release` | Release toggle in the recording prompt (`recording-release-on` while on) |
 | `conflict` | Conflict warning message |

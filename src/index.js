@@ -35,6 +35,7 @@
  * @property {string | undefined} [category] - Group for command palette
  * @property {string[] | undefined} [keys] - Keyboard triggers
  * @property {string[] | undefined} [mouse] - Mouse triggers
+ * @property {string[] | undefined} [gamepad] - Gamepad button triggers (e.g. "a", "rt", "start:up")
  * @property {((ctx: Record<string, unknown>) => boolean) | undefined} [when] - Activation condition
  * @property {(ctx: Record<string, unknown>, event?: Event) => unknown} execute - Action
  * @property {boolean | undefined} [hidden] - Hide from search
@@ -269,6 +270,89 @@ function parseMouse(binding) {
 const BUTTON_NAMES = ['click', 'middle', 'right', 'back', 'forward', 'scrollup', 'scrolldown', 'scrollleft', 'scrollright']
 const POINTER_BUTTON_COUNT = 5
 
+// The browser's "standard" gamepad layout, by button index. Face buttons are named by position
+// (an Xbox pad's A is "a", a PlayStation pad's cross is too)
+const GAMEPAD_BUTTONS = ['a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'back', 'start', 'ls', 'rs', 'up', 'down', 'left', 'right', 'home']
+/** @type {Record<string, string>} */
+const GAMEPAD_ALIASES = {
+  south: 'a', east: 'b', west: 'x', north: 'y', l1: 'lb', r1: 'rb', l2: 'lt', r2: 'rt',
+  select: 'back', view: 'back', menu: 'start', l3: 'ls', r3: 'rs', guide: 'home',
+  dpadup: 'up', dpaddown: 'down', dpadleft: 'left', dpadright: 'right',
+}
+/** @type {Record<string, string>} */
+const GAMEPAD_GLYPHS = {
+  a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', back: 'Back', start: 'Start',
+  ls: 'LS', rs: 'RS', up: 'D-pad ↑', down: 'D-pad ↓', left: 'D-pad ←', right: 'D-pad →', home: 'Home',
+}
+
+/**
+ * Parse a gamepad binding like "a", "rt" or "start:up". Gamepad buttons take no modifiers.
+ * @param {string} binding
+ * @returns {{ button: number, release: boolean }}
+ * @throws {Error} if the binding is invalid
+ */
+function parseGamepad(binding) {
+  if (!binding || typeof binding !== 'string') {
+    throw new Error(`Invalid gamepad binding: ${binding}`)
+  }
+  const { body, release } = splitRelease(binding.toLowerCase())
+  const name = GAMEPAD_ALIASES[body] ?? body
+  const button = GAMEPAD_BUTTONS.indexOf(name)
+  if (button === -1) {
+    throw new Error(`Unknown gamepad button "${body}" in binding "${binding}". Valid: ${GAMEPAD_BUTTONS.join(', ')}`)
+  }
+  return { button, release }
+}
+
+/**
+ * @param {{ button: number, release: boolean }} parsed
+ * @returns {string}
+ */
+function gamepadToLookup(parsed) {
+  return `${GAMEPAD_BUTTONS[parsed.button]}${parsed.release ? RELEASE_SUFFIX : ''}`
+}
+
+/**
+ * Format a gamepad binding into display parts (e.g. "rt:up" -> ["RT", "Release"])
+ * @param {string} binding
+ * @returns {string[]}
+ */
+export function formatGamepadParts(binding) {
+  return formatWithRelease(binding, (part) => {
+    const p = part.trim().toLowerCase()
+    return GAMEPAD_GLYPHS[GAMEPAD_ALIASES[p] ?? p] ?? part
+  })
+}
+
+/**
+ * The kinds of binding a command has, and how each is normalized and shown
+ * @typedef {'keys' | 'mouse' | 'gamepad'} BindingType
+ */
+
+/**
+ * Normalized form of a binding, equal for bindings that trigger the same way
+ * @param {BindingType} type
+ * @param {string} binding
+ * @returns {string}
+ * @throws {Error} if the binding is invalid
+ */
+function bindingLookup(type, binding) {
+  if (type === 'keys') return keyToLookup(parseKey(binding))
+  if (type === 'mouse') return mouseToLookup(parseMouse(binding))
+  return gamepadToLookup(parseGamepad(binding))
+}
+
+/**
+ * @param {BindingType} type
+ * @param {string} binding
+ * @returns {string[]}
+ */
+function formatBindingParts(type, binding) {
+  if (type === 'keys') return formatKeyParts(binding)
+  if (type === 'mouse') return formatMouseParts(binding)
+  return formatGamepadParts(binding)
+}
+
 /**
  * Back (3) and forward (4) buttons, which browsers bind to history navigation
  * @param {number} button
@@ -413,6 +497,7 @@ function eventToWheelLookup(event, prefix = eventPrefix(event)) {
  * @property {Map<string, Command[]>} mouse
  * @property {Map<string, LooseBinding[]>} looseKeys - `anyModifiers` bindings, by their unmodified lookup
  * @property {Map<string, LooseBinding[]>} looseMouse
+ * @property {Map<string, Command[]>} gamepad
  */
 
 /**
@@ -422,7 +507,7 @@ function eventToWheelLookup(event, prefix = eventPrefix(event)) {
  */
 function buildLookupTables(commands) {
   /** @type {LookupTables} */
-  const tables = { keys: new Map(), mouse: new Map(), looseKeys: new Map(), looseMouse: new Map() }
+  const tables = { keys: new Map(), mouse: new Map(), looseKeys: new Map(), looseMouse: new Map(), gamepad: new Map() }
   /**
    * @template V
    * @param {Map<string, V[]>} map
@@ -446,6 +531,7 @@ function buildLookupTables(commands) {
       if (cmd.anyModifiers) add(tables.looseMouse, mouseToLookup({ ...parsed, mods: NO_MODS }), { cmd, mods: parsed.mods })
       else add(tables.mouse, mouseToLookup(parsed), cmd)
     }
+    for (const binding of cmd.gamepad ?? []) add(tables.gamepad, gamepadToLookup(parseGamepad(binding)), cmd)
   }
 
   return tables
@@ -493,8 +579,10 @@ function isActive(command, context) {
  * @returns {boolean}
  */
 function overlayOpen(tgt) {
-  return !!tgt?.closest?.('[data-keybinds="command-palette"][open], [data-keybinds="settings"][open], [data-keybinds="context-menu"][open], [data-keybinds="basic-context-menu"][open]')
+  return !!tgt?.closest?.(OVERLAYS)
 }
+
+const OVERLAYS = '[data-keybinds="command-palette"][open], [data-keybinds="settings"][open], [data-keybinds="context-menu"][open], [data-keybinds="basic-context-menu"][open]'
 
 /**
  * Distance a wheel event scrolls along its main axis, in pixels
@@ -560,7 +648,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   /**
    * @param {Command} cmd
    * @param {Record<string, unknown>} context
-   * @param {KeyboardEvent | MouseEvent} event
+   * @param {Event} event
    * @returns {boolean}
    */
   function tryExecute(cmd, context, event) {
@@ -628,7 +716,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
    * hold can't be left open); the rest run subject to the usual checks until one consumes.
    * @param {Command[]} candidates
    * @param {Press} press
-   * @param {KeyboardEvent | MouseEvent} event
+   * @param {Event} event
    * @param {boolean} blocked
    * @param {boolean} inInput
    * @returns {boolean} whether any command consumed the release
@@ -853,20 +941,101 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   const focusTarget = typeof window !== 'undefined' ? window : target
   focusTarget.addEventListener('blur', handleBlur)
 
+  // Gamepads have no events for their buttons, so they're read every frame, but only while a
+  // command has a gamepad binding and a pad is connected
+  /** @type {Map<string, Press>} keyed "<pad index>:<button>" */
+  const gamepadPresses = new Map()
+  /** @type {Map<number, boolean[]>} each pad's buttons as last seen */
+  const padButtons = new Map()
+  const canPoll = lookup.gamepad.size > 0 && typeof navigator !== 'undefined' && !!navigator.getGamepads
+  /** @type {number | null} */
+  let pollFrame = null
+
+  /**
+   * @param {number} pad
+   * @param {number} button
+   * @param {boolean} down
+   */
+  function gamepadButton(pad, button, down) {
+    const id = `${pad}:${button}`
+    const name = GAMEPAD_BUTTONS[button]
+    const event = new CustomEvent(down ? 'gamepadbuttondown' : 'gamepadbuttonup', { cancelable: true, detail: { gamepad: pad, button: name } })
+    if (!down) {
+      const press = gamepadPresses.get(id)
+      if (!press) return
+      gamepadPresses.delete(id)
+      const candidates = lookup.gamepad.get(`${name}${RELEASE_SUFFIX}`)
+      if (candidates) runRelease(candidates, press, event, typeof document !== 'undefined' && !!document.querySelector(OVERLAYS), false)
+      return
+    }
+    /** @type {Press} */
+    const press = { mods: NO_MODS, fired: new Set() }
+    gamepadPresses.set(id, press)
+    if (typeof document !== 'undefined' && document.querySelector(OVERLAYS)) return
+    const candidates = lookup.gamepad.get(`${name}`)
+    if (!candidates) return
+    const context = getContext()
+    for (const cmd of candidates) {
+      if (!isActive(cmd, context)) continue
+      if (tryExecute(cmd, context, event)) {
+        press.fired.add(cmd)
+        return
+      }
+    }
+  }
+
+  function poll() {
+    pollFrame = null
+    const pads = navigator.getGamepads()
+    /** @type {Set<number>} */
+    const seen = new Set()
+    for (const pad of pads) {
+      if (!pad) continue
+      seen.add(pad.index)
+      const now = pad.buttons.slice(0, GAMEPAD_BUTTONS.length).map((b) => b.pressed)
+      const before = padButtons.get(pad.index)
+      padButtons.set(pad.index, now)
+      // Buttons already down when a pad is first seen are where it starts, not presses
+      if (!before) continue
+      now.forEach((down, i) => {
+        if (down !== before[i]) gamepadButton(pad.index, i, down)
+      })
+    }
+    // A pad that went away lets go of everything it held
+    for (const [index, buttons] of padButtons) {
+      if (seen.has(index)) continue
+      padButtons.delete(index)
+      buttons.forEach((down, i) => { if (down) gamepadButton(index, i, false) })
+    }
+    if (seen.size > 0) pollFrame = requestAnimationFrame(poll)
+  }
+
+  function startPolling() {
+    if (canPoll && pollFrame === null) pollFrame = requestAnimationFrame(poll)
+  }
+
   /**
    * Whether a command is held right now: its press fired and that key or button hasn't come up.
    * For controls read every frame (a game's movement, say) rather than acted on per event.
    * @param {string} id
    */
   function held(id) {
-    for (const press of [...keyPresses.values(), ...mousePresses.values()]) {
+    for (const press of [...keyPresses.values(), ...mousePresses.values(), ...gamepadPresses.values()]) {
       for (const cmd of press.fired) if (cmd.id === id) return true
     }
     return false
   }
 
+  startPolling()
+  if (canPoll) window.addEventListener('gamepadconnected', startPolling)
+
   // Return cleanup function, which can also be asked what's held
   return Object.assign(() => {
+    if (pollFrame !== null) cancelAnimationFrame(pollFrame)
+    pollFrame = null
+    if (canPoll) window.removeEventListener('gamepadconnected', startPolling)
+    gamepadPresses.clear()
+    padButtons.clear()
     target.removeEventListener('keydown', handleKeyDown, opts)
     target.removeEventListener('keyup', handleKeyUp, opts)
     target.removeEventListener('mousedown', handleMouseDown, opts)
@@ -1086,6 +1255,14 @@ export function validateCommands(commands) {
         }
       }
     }
+    for (const binding of cmd.gamepad ?? []) {
+      try {
+        parseGamepad(binding)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        throw new Error(`Command "${cmd.id}": ${msg}`)
+      }
+    }
   }
   return true
 }
@@ -1161,6 +1338,7 @@ function formatWithRelease(binding, formatPart) {
  * @property {string | undefined} [category] - Group for command palette
  * @property {string[] | undefined} [keys] - Default keyboard triggers
  * @property {string[] | undefined} [mouse] - Default mouse triggers
+ * @property {string[] | undefined} [gamepad] - Default gamepad button triggers
  * @property {boolean | undefined} [hidden] - Hide from search/settings
  * @property {string | string[] | undefined} [menu] - Context menu tag(s)
  */
@@ -1180,7 +1358,7 @@ export function defineSchema(schema) {
 }
 
 /**
- * @typedef {Record<string, { keys?: string[], mouse?: string[] }>} BindingOverrides
+ * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[] }>} BindingOverrides
  */
 
 /**
@@ -1195,7 +1373,12 @@ export function mergeBindings(schema, overrides) {
   for (const [id, binding] of Object.entries(schema)) {
     const override = overrides[id]
     result[id] = override
-      ? { ...binding, keys: override.keys ?? binding.keys, mouse: override.mouse ?? binding.mouse }
+      ? {
+          ...binding,
+          keys: override.keys ?? binding.keys,
+          mouse: override.mouse ?? binding.mouse,
+          gamepad: override.gamepad ?? binding.gamepad,
+        }
       : binding
   }
   return result
@@ -1228,6 +1411,7 @@ export function fromBindings(bindings, handlers, options = {}) {
       category: binding.category,
       keys: binding.keys,
       mouse: binding.mouse,
+      gamepad: binding.gamepad,
       hidden: binding.hidden,
       menu: binding.menu,
       execute: handler,
@@ -1536,7 +1720,7 @@ export function eventToMouseBindingString(event) {
  *
  * @param {Schema} schema - The binding schema to check against
  * @param {string} bindingStr - The binding string to check
- * @param {'keys' | 'mouse'} type - Whether this is a key or mouse binding
+ * @param {BindingType} type - Whether this is a key, mouse or gamepad binding
  * @param {string} [excludeId] - Command ID to exclude from conflict check
  * @returns {{ commandId: string, label: string } | null}
  */
@@ -1544,11 +1728,7 @@ export function findConflict(schema, bindingStr, type, excludeId) {
   // Normalize the candidate through parse → lookup
   let candidateLookup
   try {
-    if (type === 'keys') {
-      candidateLookup = keyToLookup(parseKey(bindingStr))
-    } else {
-      candidateLookup = mouseToLookup(parseMouse(bindingStr))
-    }
+    candidateLookup = bindingLookup(type, bindingStr)
   } catch {
     return null
   }
@@ -1560,8 +1740,7 @@ export function findConflict(schema, bindingStr, type, excludeId) {
 
     for (const b of bindings) {
       try {
-        const lookup = type === 'keys' ? keyToLookup(parseKey(b)) : mouseToLookup(parseMouse(b))
-        if (lookup === candidateLookup) {
+        if (bindingLookup(type, b) === candidateLookup) {
           return { commandId: id, label: binding.label }
         }
       } catch {
@@ -2225,13 +2404,13 @@ export class KeybindCheatsheet extends HTMLElement {
             keys.appendChild(binding)
           }
         }
-        // Show mouse bindings
-        if (cmd.mouse) {
-          for (const m of cmd.mouse) {
+        // Show mouse and gamepad bindings
+        for (const [type, list] of /** @type {const} */ ([['mouse', cmd.mouse], ['gamepad', cmd.gamepad]])) {
+          for (const m of list ?? []) {
             const binding = document.createElement('span')
             binding.className = 'cheatsheet__item-binding'
             binding.setAttribute('part', 'item-binding')
-            for (const part of formatMouseParts(m)) {
+            for (const part of formatBindingParts(type, m)) {
               const kbd = document.createElement('kbd')
               kbd.className = 'cheatsheet__item-key'
               kbd.setAttribute('part', 'item-key')
@@ -2465,17 +2644,22 @@ export class KeybindSettings extends HTMLElement {
     this._store = null
     /** @type {((e: Event) => void) | null} */
     this._storeListener = null
-    /** @type {{ commandId: string, type: 'keys' | 'mouse', index: number | null } | null} */
+    /** @type {{ commandId: string, type: BindingType, index: number | null } | null} */
     this._recording = null
-    /** @type {{ commandId: string, label: string, bindingStr: string, type: 'keys' | 'mouse', index: number | null, flip?: boolean } | null} */
+    /** @type {{ commandId: string, label: string, bindingStr: string, type: BindingType, index: number | null, flip?: boolean } | null} */
     this._conflict = null
     /** Whether recording captures a release (the input comes up) instead of a press */
     this._recordRelease = false
     /** @type {HTMLElement | null} */
     this._releaseToggle = null
     /** Press-time binding of the input currently held while recording a release */
-    /** @type {{ kind: 'key' | 'mouse', id: string, binding: string } | null} */
+    /** @type {{ kind: 'key' | 'mouse' | 'gamepad', id: string, binding: string } | null} */
     this._heldPress = null
+    /** Frame of the gamepad poll while recording a gamepad button */
+    /** @type {number | null} */
+    this._recordPadFrame = null
+    // The add-a-gamepad-binding button shows only while a pad is connected
+    this._padsChanged = () => { if (this.open) this._render() }
     /** @type {((e: Event) => void) | null} */
     this._recordKeyHandler = null
     /** @type {((e: Event) => void) | null} */
@@ -2512,6 +2696,8 @@ export class KeybindSettings extends HTMLElement {
 
   connectedCallback() {
     markKind(this, 'settings')
+    window.addEventListener('gamepadconnected', this._padsChanged)
+    window.addEventListener('gamepaddisconnected', this._padsChanged)
   }
 
   get store() { return this._store }
@@ -2554,6 +2740,8 @@ export class KeybindSettings extends HTMLElement {
 
   disconnectedCallback() {
     this._stopRecording()
+    window.removeEventListener('gamepadconnected', this._padsChanged)
+    window.removeEventListener('gamepaddisconnected', this._padsChanged)
     if (this._store && this._storeListener) {
       this._store.removeEventListener('change', this._storeListener)
     }
@@ -2568,22 +2756,23 @@ export class KeybindSettings extends HTMLElement {
   /**
    * Get the effective bindings for a command (overrides merged with schema)
    * @param {string} commandId
-   * @returns {{ keys: string[], mouse: string[] }}
+   * @returns {{ keys: string[], mouse: string[], gamepad: string[] }}
    */
   _getBindings(commandId) {
-    if (!this._store) return { keys: [], mouse: [] }
+    if (!this._store) return { keys: [], mouse: [], gamepad: [] }
     const merged = this._store.get()
     const binding = merged[commandId]
     return {
       keys: binding?.keys ? [...binding.keys] : [],
       mouse: binding?.mouse ? [...binding.mouse] : [],
+      gamepad: binding?.gamepad ? [...binding.gamepad] : [],
     }
   }
 
   /**
    * Save binding changes, cleaning up overrides that match defaults
    * @param {string} commandId
-   * @param {{ keys: string[], mouse: string[] }} newBindings
+   * @param {{ keys: string[], mouse: string[], gamepad: string[] }} newBindings
    */
   _saveBindings(commandId, newBindings) {
     if (!this._store) return
@@ -2596,25 +2785,27 @@ export class KeybindSettings extends HTMLElement {
     // Check if new bindings match schema defaults
     const keysMatch = arraysEqual(newBindings.keys, schemaDef.keys || [])
     const mouseMatch = arraysEqual(newBindings.mouse, schemaDef.mouse || [])
+    const gamepadMatch = arraysEqual(newBindings.gamepad, schemaDef.gamepad || [])
 
-    if (keysMatch && mouseMatch) {
+    if (keysMatch && mouseMatch && gamepadMatch) {
       // Matches defaults — remove override entry
       delete overrides[commandId]
     } else {
       overrides[commandId] = {}
       if (!keysMatch) overrides[commandId].keys = newBindings.keys
       if (!mouseMatch) overrides[commandId].mouse = newBindings.mouse
+      if (!gamepadMatch) overrides[commandId].gamepad = newBindings.gamepad
     }
 
     this._store.save(overrides)
     this.dispatchEvent(new CustomEvent('change', {
-      detail: { commandId, keys: newBindings.keys, mouse: newBindings.mouse }
+      detail: { commandId, keys: newBindings.keys, mouse: newBindings.mouse, gamepad: newBindings.gamepad }
     }))
   }
 
   /**
    * @param {string} commandId
-   * @param {'keys' | 'mouse'} type
+   * @param {BindingType} type
    * @param {number | null} index - null for adding, number for replacing
    */
   _startRecording(commandId, type, index) {
@@ -2723,11 +2914,47 @@ export class KeybindSettings extends HTMLElement {
     window.addEventListener('mousedown', mouseHandler, true)
     window.addEventListener('mouseup', mouseUpHandler, true)
     window.addEventListener('wheel', wheelHandler, { capture: true })
+    if (type === 'gamepad') this._recordGamepad()
 
     this._render()
   }
 
+  // Gamepads have no events, so recording one reads every pad each frame. Buttons already down
+  // when recording starts don't count until they've been let go
+  _recordGamepad() {
+    /** @type {Map<number, boolean[]>} */
+    const before = new Map()
+    const read = () => {
+      this._recordPadFrame = null
+      if (this._recording?.type !== 'gamepad') return
+      for (const pad of navigator.getGamepads()) {
+        if (!pad) continue
+        const now = pad.buttons.slice(0, GAMEPAD_BUTTONS.length).map((b) => b.pressed)
+        const was = before.get(pad.index)
+        before.set(pad.index, now)
+        if (!was) continue
+        for (let i = 0; i < now.length; i++) {
+          const name = /** @type {string} */ (GAMEPAD_BUTTONS[i])
+          const id = `${pad.index}:${i}`
+          if (now[i] && !was[i]) {
+            if (!this._recordRelease) return this._handleRecordedBinding(name)
+            this._heldPress = { kind: 'gamepad', id, binding: name }
+          } else if (!now[i] && was[i] && this._heldPress?.kind === 'gamepad' && this._heldPress.id === id) {
+            this._heldPress = null
+            return this._handleRecordedBinding(name + RELEASE_SUFFIX)
+          }
+        }
+      }
+      this._recordPadFrame = requestAnimationFrame(read)
+    }
+    this._recordPadFrame = requestAnimationFrame(read)
+  }
+
   _stopRecording() {
+    if (this._recordPadFrame !== null) {
+      cancelAnimationFrame(this._recordPadFrame)
+      this._recordPadFrame = null
+    }
     if (this._recordKeyHandler) {
       window.removeEventListener('keydown', this._recordKeyHandler, true)
       this._recordKeyHandler = null
@@ -2765,7 +2992,7 @@ export class KeybindSettings extends HTMLElement {
   /**
    * Switch a stored binding between its press and release form
    * @param {string} commandId
-   * @param {'keys' | 'mouse'} type
+   * @param {BindingType} type
    * @param {number} index
    */
   _flipRelease(commandId, type, index) {
@@ -2804,6 +3031,9 @@ export class KeybindSettings extends HTMLElement {
 
   /** @returns {string} */
   _recordingPrompt() {
+    if (this._recording?.type === 'gamepad') {
+      return this._recordRelease ? 'Press and release a gamepad button...' : 'Press a gamepad button...'
+    }
     const keys = this._recording?.type === 'keys'
     if (this._recordRelease) return keys ? 'Press and release a key...' : 'Press and release a button...'
     return keys ? 'Press a key...' : 'Click or scroll...'
@@ -2827,7 +3057,7 @@ export class KeybindSettings extends HTMLElement {
 
   /**
    * @param {string} commandId
-   * @param {'keys' | 'mouse'} type
+   * @param {BindingType} type
    * @param {number | null} index
    * @param {string} bindingStr
    */
@@ -2850,11 +3080,10 @@ export class KeybindSettings extends HTMLElement {
     // Remove conflicting binding from the other command
     const conflictBindings = this._getBindings(conflictCmdId)
     try {
-      const candidateLookup = type === 'keys' ? keyToLookup(parseKey(bindingStr)) : mouseToLookup(parseMouse(bindingStr))
+      const candidateLookup = bindingLookup(type, bindingStr)
       conflictBindings[type] = conflictBindings[type].filter(b => {
         try {
-          const lookup = type === 'keys' ? keyToLookup(parseKey(b)) : mouseToLookup(parseMouse(b))
-          return lookup !== candidateLookup
+          return bindingLookup(type, b) !== candidateLookup
         } catch { return true }
       })
     } catch {
@@ -2874,7 +3103,7 @@ export class KeybindSettings extends HTMLElement {
 
   /**
    * @param {string} commandId
-   * @param {'keys' | 'mouse'} type
+   * @param {BindingType} type
    * @param {number} index
    */
   _removeBinding(commandId, type, index) {
@@ -2906,6 +3135,7 @@ export class KeybindSettings extends HTMLElement {
 
     const schema = this._store.schema
     const merged = this._store.get()
+    const padConnected = typeof navigator !== 'undefined' && !!navigator.getGamepads?.().some(Boolean)
     this._dialog.replaceChildren()
 
     // Header
@@ -2980,11 +3210,11 @@ export class KeybindSettings extends HTMLElement {
           }
         }
 
-        // Render mouse bindings
-        if (bindings?.mouse) {
-          for (let i = 0; i < bindings.mouse.length; i++) {
-            const mouse = /** @type {string} */ (bindings.mouse[i])
-            bindingsEl.appendChild(this._renderBinding(cmd.id, 'mouse', i, mouse))
+        // Render mouse and gamepad bindings
+        for (const type of /** @type {const} */ (['mouse', 'gamepad'])) {
+          const list = bindings?.[type] ?? []
+          for (let i = 0; i < list.length; i++) {
+            bindingsEl.appendChild(this._renderBinding(cmd.id, type, i, /** @type {string} */ (list[i])))
           }
         }
 
@@ -3029,6 +3259,14 @@ export class KeybindSettings extends HTMLElement {
           addMouseBtn.addEventListener('click', () => this._startRecording(cmd.id, 'mouse', null))
           addBtn.appendChild(addMouseBtn)
 
+          if (padConnected) {
+            const addPadBtn = document.createElement('button')
+            addPadBtn.setAttribute('part', 'add-gamepad')
+            addPadBtn.textContent = '+ Gamepad'
+            addPadBtn.addEventListener('click', () => this._startRecording(cmd.id, 'gamepad', null))
+            addBtn.appendChild(addPadBtn)
+          }
+
           bindingsEl.appendChild(addBtn)
         }
 
@@ -3052,7 +3290,7 @@ export class KeybindSettings extends HTMLElement {
 
   /**
    * @param {string} commandId
-   * @param {'keys' | 'mouse'} type
+   * @param {BindingType} type
    * @param {number} index
    * @param {string} bindingStr
    * @returns {HTMLElement}
@@ -3091,7 +3329,7 @@ export class KeybindSettings extends HTMLElement {
     keysContainer.className = 'settings__binding-keys'
     keysContainer.setAttribute('part', 'binding-keys')
 
-    const parts = type === 'keys' ? formatKeyParts(bindingStr) : formatMouseParts(bindingStr)
+    const parts = formatBindingParts(type, bindingStr)
     for (const part of parts) {
       const kbd = document.createElement('kbd')
       kbd.className = 'settings__binding-key'
@@ -4471,7 +4709,7 @@ export function createComponent(kind) {
  * hub.refresh()
  * hub.bindButtons(toolbar) // <button data-command="save">Save</button>
  *
- * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, hidden?: boolean | undefined }} [D=Command]
+ * @template {{ id: string, label: string, category?: string | undefined, description?: string | undefined, keys?: string[] | undefined, mouse?: string[] | undefined, gamepad?: string[] | undefined, hidden?: boolean | undefined }} [D=Command]
  * @template {object} [C=Record<string, unknown>] - The context `when` conditions see
  */
 export class CommandHub extends EventTarget {
@@ -4639,7 +4877,7 @@ export class CommandHub extends EventTarget {
     /** @type {Schema} */
     const schema = {}
     for (const d of this._defs.values()) {
-      schema[d.id] = { label: d.label, category: d.category, description: d.description, keys: d.keys ?? [], mouse: d.mouse, hidden: d.hidden }
+      schema[d.id] = { label: d.label, category: d.category, description: d.description, keys: d.keys ?? [], mouse: d.mouse, gamepad: d.gamepad, hidden: d.hidden }
     }
     this._store?.removeEventListener('change', this._storeListener)
     this._store?.dispose()
@@ -4651,7 +4889,7 @@ export class CommandHub extends EventTarget {
     for (const d of this._defs.values()) {
       const b = bound[d.id]
       /** @type {Command} */
-      const cmd = { ...this._adapt(d), keys: b?.keys, mouse: b?.mouse }
+      const cmd = { ...this._adapt(d), keys: b?.keys, mouse: b?.mouse, gamepad: b?.gamepad }
       try {
         validateCommands([cmd])
       } catch (e) {
@@ -4659,13 +4897,14 @@ export class CommandHub extends EventTarget {
         console.error(`keybinds: dropping the bindings of "${d.id}"`, e)
         cmd.keys = []
         cmd.mouse = []
+        cmd.gamepad = []
       }
       this._live.set(d.id, cmd)
     }
 
     this._unbind?.()
     const live = [...this._live.values()]
-    this._unbind = keybinds(live.filter((c) => c.keys?.length || c.mouse?.length), () => /** @type {Record<string, unknown>} */ (this.context()), this._listen)
+    this._unbind = keybinds(live.filter((c) => c.keys?.length || c.mouse?.length || c.gamepad?.length), () => /** @type {Record<string, unknown>} */ (this.context()), this._listen)
     const visible = live.filter((c) => !c.hidden)
     if (this.palette) this.palette.commands = visible
     if (this.cheatsheet) this.cheatsheet.commands = visible
@@ -4722,6 +4961,15 @@ export class CommandHub extends EventTarget {
    */
   mouseFor(id) {
     return (this._live.get(id)?.mouse ?? []).map((m) => formatMouseParts(m).join('+'))
+  }
+
+  /**
+   * The gamepad bindings of a command right now, as shown to people (e.g. "RT").
+   * @param {string} id
+   * @returns {string[]}
+   */
+  gamepadFor(id) {
+    return (this._live.get(id)?.gamepad ?? []).map((g) => formatGamepadParts(g).join('+'))
   }
 
   /**
