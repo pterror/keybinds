@@ -25,10 +25,11 @@ const DEADZONE = 0.15
 /**
  * Parse an axis binding: "mouse:x", "pad:rx", "keys:a/d", with a leading "-" to invert
  * @param {string} binding
+ * @param {import("./keys.js").KeySyntax[]} [syntax] - For key pairs, as for keys()
  * @returns {ParsedAxis}
  * @throws {Error} if the binding is invalid
  */
-export function parseAxis(binding) {
+export function parseAxis(binding, syntax = []) {
   if (!binding || typeof binding !== 'string') {
     throw new Error(`Invalid axis binding: ${binding}`)
   }
@@ -43,9 +44,8 @@ export function parseAxis(binding) {
   if (kind === 'keys') {
     const [neg, pos, ...extra] = rest.split('/')
     if (neg && pos && extra.length === 0) {
-      const parsedNeg = parseKey(neg)
-      const parsedPos = parseKey(pos)
-      if (parsedNeg.release || parsedPos.release) throw new Error(`Axis keys have no release: "${binding}"`)
+      const parsedNeg = parseKey(neg, syntax)
+      const parsedPos = parseKey(pos, syntax)
       return { kind, neg: { ...parsedNeg, mods: NO_MODS }, pos: { ...parsedPos, mods: NO_MODS }, invert }
     }
   }
@@ -85,21 +85,23 @@ function padAxis(source) {
 
 /**
  * Axes, read with `axis(id)` on what keybinds() returns
+ * @param {...import("./keys.js").KeySyntax} syntax - For key pairs, as for keys()
  * @returns {Input}
  */
-export function axes() {
+export function axes(...syntax) {
   return {
     field: 'axes',
     axis: true,
-    parse(binding) {
-      return { lookup: axisToLookup(parseAxis(binding)), loose: '', mods: NO_MODS }
+    parse(binding, release) {
+      if (release) throw new Error(`Axes have no release: "${binding}"`)
+      return { lookup: axisToLookup(parseAxis(binding, syntax)), loose: '', mods: NO_MODS }
     },
     listen(d) {
       /** @type {Map<string, { def: AxisDef, sources: ParsedAxis[] }>} */
       const defs = new Map()
       for (const def of d.axes) {
         try {
-          defs.set(def.id, { def, sources: def.axes.map(parseAxis) })
+          defs.set(def.id, { def, sources: def.axes.map((b) => parseAxis(b, syntax)) })
         } catch (e) {
           throw new Error(`Axis "${def.id}": ${e instanceof Error ? e.message : String(e)}`)
         }
@@ -115,7 +117,7 @@ export function axes() {
       /** @param {Event} e */
       const onDown = (e) => {
         const event = /** @type {KeyboardEvent} */ (e)
-        if (!inInput(event.target)) downKeys.set(event.code || event.key, eventToKeyLookups(event, ''))
+        if (!inInput(event.target)) downKeys.set(event.code || event.key, eventToKeyLookups(event, '', '', syntax))
       }
       /** @param {Event} e */
       const onUp = (e) => {

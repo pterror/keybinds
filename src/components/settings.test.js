@@ -231,6 +231,7 @@ describe('KeybindSettings release recording', () => {
   function setup() {
     const el = /** @type {import('../index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
     el.inputs = ALL.inputs
+    el.releases = true
     const store = new BindingsStore(schema, 'test:release-settings')
     el.store = store
     // The runtime's CustomEvent is not a happy-dom Event, so the panel's own events can't be dispatched here

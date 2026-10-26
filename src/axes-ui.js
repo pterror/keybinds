@@ -36,11 +36,12 @@ export function formatAxisParts(binding) {
 
 /**
  * Axes, shown and recorded as well as read
+ * @param {...import("./keys.js").KeySyntax} syntax - As for axes()
  * @returns {InputUI}
  */
-export function axesUI() {
+export function axesUI(...syntax) {
   return {
-    ...axes(),
+    ...axes(...syntax),
     label: 'Axis',
     invert: true,
     format: formatAxisParts,
@@ -63,7 +64,7 @@ export function axesUI() {
       const onKey = (e) => {
         const event = /** @type {KeyboardEvent} */ (e)
         if (event.key === 'Escape' || event.repeat) return
-        const binding = eventToBindingString(event)
+        const binding = eventToBindingString(event, syntax)
         if (!binding) return
         event.preventDefault()
         event.stopPropagation()

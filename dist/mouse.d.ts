@@ -9,17 +9,16 @@ export type Press = import('./core.js').Press;
 export type ParsedMouse = {
     mods: Modifiers;
     button: number;
-    release: boolean;
 };
 /**
- * Parse a mouse binding like "$mod+Click", "MiddleClick" or "Back:up"
+ * Parse a mouse binding like "$mod+Click" or "MiddleClick", without its release suffix
  * Supported: Click/LeftClick, RightClick, MiddleClick, BackClick, ForwardClick, Scroll{Up,Down,Left,Right}
- * A trailing ":up" binds the button's release.
  * @param {string} binding
+ * @param {boolean} [release] - Whether it had a release suffix; scrolling has no release
  * @returns {ParsedMouse}
  * @throws {Error} if mouse binding is invalid
  */
-export declare function parseMouse(binding: string): ParsedMouse;
+export declare function parseMouse(binding: string, release?: boolean): ParsedMouse;
 /**
  * Binding name for a MouseEvent.button value, null for buttons with no name
  * @param {number} button

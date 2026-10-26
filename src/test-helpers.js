@@ -1,9 +1,14 @@
 /**
- * What the tests share: inputs, a keybinds() that listens to all of them, and events.
+ * What the tests share: inputs with every piece of syntax, a keybinds() that listens to all of
+ * them, and events.
  */
 
 import { keybinds as listen } from './core.js'
 import { keys } from './keys.js'
+import { symbols } from './keys-symbols.js'
+import { aliases } from './keys-aliases.js'
+import { releases } from './releases.js'
+import { anyModifiers } from './any-modifiers.js'
 import { mouse as mouseInput } from './mouse.js'
 import { gamepad } from './gamepad.js'
 import { axes } from './axes.js'
@@ -19,21 +24,31 @@ import { ContextMenu } from './components/context-menu.js'
 export { listen, keys as keysInput }
 
 /** One of each input, shown and recorded too, for findConflict, the settings panel and the hub */
-export const INPUT = { keys: keysUI(), mouse: mouseUI(), gamepad: gamepadUI(), axes: axesUI() }
-export const ALL = { inputs: Object.values(INPUT) }
+export const INPUT = {
+  keys: keysUI(symbols(), aliases()),
+  mouse: mouseUI(),
+  gamepad: gamepadUI(),
+  axes: axesUI(symbols(), aliases()),
+}
+/** Every input and feature: options for keybinds(), validateCommands() and the hub */
+export const ALL = { inputs: Object.values(INPUT), releases: releases(), anyModifiers: anyModifiers() }
 export const COMPONENTS = [CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu]
 
 /**
- * keybinds() listening to every input
+ * keybinds() listening to every input, with every feature
  * @param {import('./core.js').Command[]} commands
  * @param {(() => Record<string, unknown>) | undefined} [context]
  * @param {import('./core.js').KeybindsOptions & { wheel?: { step?: number, idle?: number } }} [options]
  */
 export const keybinds = (commands, context, options = {}) => {
   const { wheel, ...rest } = options
-  return listen(commands, context, { inputs: [keys(), mouseInput(wheel ? { wheel } : {}), gamepad(), axes()], ...rest })
+  return listen(commands, context, {
+    inputs: [keys(symbols(), aliases()), mouseInput(wheel ? { wheel } : {}), gamepad(), axes(symbols(), aliases())],
+    releases: releases(),
+    anyModifiers: anyModifiers(),
+    ...rest,
+  })
 }
-
 /** @param {string} type @param {number} button @param {MouseEventInit} [init] */
 export const mouse = (type, button, init = {}) => new MouseEvent(type, { button, cancelable: true, ...init })
 /** @param {string} type @param {string} key @param {string} code @param {KeyboardEventInit} [init] */

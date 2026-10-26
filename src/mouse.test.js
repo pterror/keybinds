@@ -159,7 +159,7 @@ describe('side buttons', () => {
   })
 
   test('parse, format and conflict handle back/forward', () => {
-    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['Back', 'forward', 'ctrl+BackClick'], execute: () => {} }], ALL.inputs)).not.toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['Back', 'forward', 'ctrl+BackClick'], execute: () => {} }], ALL)).not.toThrow()
     expect(formatMouseParts('Back')).toEqual(['Back'])
     expect(formatMouseParts('ctrl+ForwardClick')).toEqual(['Ctrl', 'Forward'])
     const schema = { s: { label: 'S', mouse: ['back'] } }

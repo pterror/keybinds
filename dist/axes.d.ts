@@ -31,10 +31,11 @@ export type ParsedAxis = {
 /**
  * Parse an axis binding: "mouse:x", "pad:rx", "keys:a/d", with a leading "-" to invert
  * @param {string} binding
+ * @param {import("./keys.js").KeySyntax[]} [syntax] - For key pairs, as for keys()
  * @returns {ParsedAxis}
  * @throws {Error} if the binding is invalid
  */
-export declare function parseAxis(binding: string): ParsedAxis;
+export declare function parseAxis(binding: string, syntax?: import("./keys.js").KeySyntax[]): ParsedAxis;
 /**
  * Normalized form of an axis binding, without its inversion
  * @param {ParsedAxis} parsed
@@ -44,6 +45,7 @@ export declare function axisToLookup(parsed: ParsedAxis): string;
 export declare const hasPads: () => boolean;
 /**
  * Axes, read with `axis(id)` on what keybinds() returns
+ * @param {...import("./keys.js").KeySyntax} syntax - For key pairs, as for keys()
  * @returns {Input}
  */
-export declare function axes(): Input;
+export declare function axes(...syntax: import("./keys.js").KeySyntax[]): Input;

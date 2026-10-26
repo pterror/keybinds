@@ -1,4 +1,4 @@
-import { markKind, findConflict, flipRelease, splitRelease } from '../core.js'
+import { markKind, findConflict, flipRelease, splitRelease, parseBinding } from '../core.js'
 import { keysUI } from '../keys-ui.js'
 
 /** @typedef {import('../core.js').InputUI} Input */
@@ -14,6 +14,7 @@ import { keysUI } from '../keys-ui.js'
  * Properties:
  *   store: BindingsStore  - Reactive bindings store
  *   inputs: Input[]       - Which bindings are shown and can be recorded (default: keys only)
+ *   releases: boolean     - Offer release bindings ("k:up"); set when keybinds() has releases() (default: false)
  *   open: boolean         - Show/hide the settings panel
  *
  * Events:
@@ -59,6 +60,8 @@ export class KeybindSettings extends HTMLElement {
     this._storeListener = null
     /** @type {Input[]} */
     this._inputs = [keysUI()]
+    /** Whether release bindings ("k:up") are on, so they can be recorded and switched to */
+    this.releases = false
     /** @type {(() => void)[]} */
     this._unwatch = []
     /** @type {{ commandId: string, input: Input, index: number | null } | null} */
@@ -336,10 +339,10 @@ export class KeybindSettings extends HTMLElement {
 
     // Remove conflicting binding from the other command
     const conflictBindings = this._getBindings(conflictCmdId)
-    const lookup = input.parse(bindingStr).lookup
+    const lookup = parseBinding(input, bindingStr, true).lookup
     conflictBindings[input.field] = (conflictBindings[input.field] ?? []).filter((b) => {
       try {
-        return input.parse(b).lookup !== lookup
+        return parseBinding(input, b, true).lookup !== lookup
       } catch { return true }
     })
     this._saveBindings(conflictCmdId, conflictBindings)
@@ -520,7 +523,7 @@ export class KeybindSettings extends HTMLElement {
     overlay.setAttribute('part', 'recording-overlay')
     overlay.textContent = input.prompt?.(this._recordRelease) ?? 'Waiting...'
     wrapper.appendChild(overlay)
-    if (input.release) wrapper.appendChild(this._renderReleaseToggle())
+    if (this.releases && input.release) wrapper.appendChild(this._renderReleaseToggle())
     return wrapper
   }
 
@@ -578,7 +581,7 @@ export class KeybindSettings extends HTMLElement {
     }
 
     const isRelease = splitRelease(bindingStr.toLowerCase()).release
-    if (input.release && (isRelease || input.release(bindingStr))) {
+    if (this.releases && input.release && (isRelease || input.release(bindingStr))) {
       const releaseBtn = document.createElement('button')
       releaseBtn.className = 'settings__binding-release'
       releaseBtn.setAttribute('part', isRelease ? 'binding-release binding-release-on' : 'binding-release')

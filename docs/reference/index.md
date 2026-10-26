@@ -10,6 +10,8 @@ function keybinds(
   getContext?: () => Record<string, unknown>,
   options?: {
     inputs?: Input[],
+    releases?: Releases,          // releases()
+    anyModifiers?: AnyModifiers,  // anyModifiers()
     target?: EventTarget,
     onExecute?: (cmd, ctx) => void,
     capture?: boolean,
@@ -21,6 +23,8 @@ function keybinds(
 | Option | Default | Description |
 |--------|---------|-------------|
 | `inputs` | `[]` | What to listen to, e.g. `[keys(), mouse()]`. A command with bindings no input reads (gamepad bindings without `gamepad()`, say) is an error |
+| `releases` | - | `releases()`: bindings to an input coming up (`k:up`). Without it, such a binding is an error |
+| `anyModifiers` | - | `anyModifiers()`: commands with `anyModifiers: true` match whatever other modifiers are held. Without it, such a command is an error |
 | `target` | `window` | Where to listen |
 | `onExecute` | - | Called after a command consumes an event |
 | `capture` | `false` | Listen in the capture phase, so a bound key reaches its command before anything under `target` (an editor, say) handles it. A key with no active command, or whose command returns `false`, goes on as usual. |
@@ -126,12 +130,12 @@ Returns `true` if command was found and executed.
 
 ---
 
-## validateCommands(commands, inputs)
+## validateCommands(commands, options)
 
-Validate all command bindings upfront, through the inputs that read them.
+Validate all command bindings upfront, with the same options as `keybinds()`: its inputs, and `releases`/`anyModifiers` if used.
 
 ```ts
-function validateCommands(commands: Command[], inputs: Input[]): true
+function validateCommands(commands: Command[], options: { inputs: Input[], releases?, anyModifiers? }): true
 ```
 
 Throws if any binding is invalid. Call on init to catch typos early.
@@ -304,7 +308,7 @@ if (conflict) {
 
 ## CommandHub
 
-`new CommandHub({ inputs?, components?, host?, storageKey?, storage?, listen?, adapt? })`. `inputs` are what it listens to and what its components show and record; `components` are the classes to make inside `host` (any of `CommandPalette`, `KeybindCheatsheet`, `KeybindSettings`, `ContextMenu`). `storage` is `(scope) => BindingsStorage`, for keeping rebindings somewhere other than localStorage. See [Commands From Many Places](../guide/commands.md#commands-from-many-places-commandhub).
+`new CommandHub({ inputs?, releases?, anyModifiers?, components?, host?, storageKey?, storage?, listen?, adapt? })`. `inputs` are what it listens to and what its components show and record (with components, their UI halves); `releases` and `anyModifiers` are as for `keybinds()`, and with `releases` the settings panel offers release bindings; `components` are the classes to make inside `host` (any of `CommandPalette`, `KeybindCheatsheet`, `KeybindSettings`, `ContextMenu`). `storage` is `(scope) => BindingsStorage`, for keeping rebindings somewhere other than localStorage. See [Commands From Many Places](../guide/commands.md#commands-from-many-places-commandhub).
 
 | Method | Description |
 |--------|-------------|

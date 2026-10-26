@@ -21,7 +21,9 @@ export type CommandHubOptions = {
     host?: HTMLElement;
     storageKey?: string;
     storage?: (scope: string) => BindingsStorage;
-    listen?: Omit<KeybindsOptions, 'inputs' | 'axes'>;
+    releases?: import('./core.js').Releases;
+    anyModifiers?: import('./core.js').AnyModifiers;
+    listen?: Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'anyModifiers'>;
 };
 /** @typedef {import('./core.js').Command} Command */
 /** @typedef {import('./core.js').AxisDef} AxisDef */
@@ -44,7 +46,9 @@ export type CommandHubOptions = {
  * @property {string} [storageKey] - localStorage key for people's rebindings (default "keybinds"); the scope is appended
  * @property {(scope: string) => BindingsStorage} [storage] - Keep rebindings somewhere other than
  *   localStorage, separately per scope. Takes the place of `storageKey`
- * @property {Omit<KeybindsOptions, 'inputs' | 'axes'>} [listen] - Passed on to keybinds(): target, capture, onExecute
+ * @property {import('./core.js').Releases} [releases] - From releases(), for release bindings ("k:up")
+ * @property {import('./core.js').AnyModifiers} [anyModifiers] - From anyModifiers(), for commands with `anyModifiers`
+ * @property {Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'anyModifiers'>} [listen] - Passed on to keybinds(): target, capture, onExecute
  */
 /**
  * Every command on the page, from every source, with one store of people's rebindings.

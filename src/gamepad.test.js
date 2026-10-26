@@ -9,8 +9,8 @@ import { INPUT, ALL, keybinds, fakePads } from './test-helpers.js'
 
 describe('gamepad', () => {
   test('parses names and aliases, and rejects unknown buttons', () => {
-    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['a', 'south', 'rt:up', 'dpadUp'], execute: () => {} }], ALL.inputs)).not.toThrow()
-    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['shift+a'], execute: () => {} }], ALL.inputs)).toThrow(/Unknown gamepad button/)
+    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['a', 'south', 'rt:up', 'dpadUp'], execute: () => {} }], ALL)).not.toThrow()
+    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['shift+a'], execute: () => {} }], ALL)).toThrow(/Unknown gamepad button/)
   })
 
   test('formats for display', () => {

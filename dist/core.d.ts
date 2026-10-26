@@ -54,6 +54,7 @@ export type Dispatch = {
     target: EventTarget;
     capture: boolean;
     bound: boolean;
+    releases: boolean;
     axes: AxisDef[];
     context: () => Record<string, unknown>;
     presses: Map<string, Press>;
@@ -72,7 +73,7 @@ export type Dispatch = {
 export type Input = {
     field: string;
     axis?: boolean;
-    parse: (binding: string) => ParsedBinding;
+    parse: (binding: string, release: boolean) => ParsedBinding;
     matches?: (cmd: Command, event: Event) => boolean;
     listen: (d: Dispatch) => InputHandle;
 };
@@ -192,6 +193,8 @@ export type BindingOverrides = Record<string, {
  * @property {EventTarget} target - Where to listen
  * @property {boolean} capture - Whether to listen in the capture phase
  * @property {boolean} bound - Whether any command has a binding for this input
+ * @property {boolean} releases - Whether release bindings are on (releases()); without them an
+ *   input only needs to note that a press ended
  * @property {AxisDef[]} axes - The axes passed to keybinds()
  * @property {() => Record<string, unknown>} context
  * @property {Map<string, Press>} presses - This input's held presses, by whatever id it chooses
@@ -212,7 +215,8 @@ export type BindingOverrides = Record<string, {
  * @typedef {Object} Input
  * @property {string} field - The command (or axis) field holding its bindings: "keys", "mouse", ...
  * @property {boolean} [axis] - Its bindings are an axis's sources rather than a command's triggers
- * @property {(binding: string) => ParsedBinding} parse - Throws if the binding is invalid
+ * @property {(binding: string, release: boolean) => ParsedBinding} parse - Throws if the binding is invalid.
+ *   Gets the binding without its release suffix (":up"); `release` says whether it had one
  * @property {(cmd: Command, event: Event) => boolean} [matches] - Whether an event is one of the command's press bindings
  * @property {(d: Dispatch) => InputHandle} listen
  */
@@ -363,17 +367,50 @@ export declare function anyOverlayOpen(): boolean;
  * @param {EventTarget | null} tgt
  */
 export declare function inInput(tgt: EventTarget | null): boolean;
+export type Releases = (candidates: Command[], press: Press, event: Event, options: {
+    blocked?: boolean;
+    inInput?: boolean;
+}, run: {
+    context: Record<string, unknown>;
+    execute: (cmd: Command, ctx: Record<string, unknown>, event: Event) => boolean;
+}) => boolean;
+export type AnyModifiers = {
+    table: () => {
+        add: (parsed: ParsedBinding, cmd: Command) => void;
+        find: (loose: string[], mods: Modifiers, found: Command[] | undefined) => Command[] | undefined;
+        size: () => number;
+    };
+};
 export type KeybindsOptions = {
     inputs?: Input[];
+    releases?: Releases;
+    anyModifiers?: AnyModifiers;
     target?: EventTarget;
     onExecute?: (cmd: Command, ctx: Record<string, unknown>) => void;
     capture?: boolean;
     axes?: AxisDef[];
 };
 /**
+ * Runs a release's candidates: what releases() gives keybinds()
+ * @typedef {(candidates: Command[], press: Press, event: Event, options: { blocked?: boolean, inInput?: boolean },
+ *   run: { context: Record<string, unknown>, execute: (cmd: Command, ctx: Record<string, unknown>, event: Event) => boolean }) => boolean} Releases
+ */
+/**
+ * Finds `anyModifiers` commands: what anyModifiers() gives keybinds(), one table per input
+ * @typedef {{ table: () => {
+ *   add: (parsed: ParsedBinding, cmd: Command) => void,
+ *   find: (loose: string[], mods: Modifiers, found: Command[] | undefined) => Command[] | undefined,
+ *   size: () => number,
+ * } }} AnyModifiers
+ */
+/**
  * @typedef {Object} KeybindsOptions
  * @property {Input[]} [inputs] - What to listen to: e.g. [keys(), mouse()]. A command bound
  *   through an input that isn't here is an error
+ * @property {Releases} [releases] - From releases(): bindings to an input coming up ("k:up").
+ *   Without it, such a binding is an error
+ * @property {AnyModifiers} [anyModifiers] - From anyModifiers(): commands whose bindings match
+ *   whatever other modifiers are held. Without it, such a command is an error
  * @property {EventTarget} [target] - Where to listen (default: window)
  * @property {(cmd: Command, ctx: Record<string, unknown>) => void} [onExecute] - Called after a command consumes an event
  * @property {boolean} [capture] - Listen in the capture phase, so a bound key reaches its command before
@@ -381,6 +418,15 @@ export type KeybindsOptions = {
  *   leaves the event alone.
  * @property {AxisDef[]} [axes] - Continuous inputs, read with `axis(id)` on what keybinds() returns
  */
+/**
+ * A binding through an input. The release suffix (":up") is the core's: it's taken off before the
+ * input parses the rest, and allowed only with releases()
+ * @param {Input} input
+ * @param {string} binding
+ * @param {boolean} releases - Whether release bindings are allowed
+ * @returns {ParsedBinding}
+ */
+export declare function parseBinding(input: Input, binding: string, releases: boolean): ParsedBinding;
 /**
  * Create keybind handler
  *
@@ -410,11 +456,11 @@ export declare function keybinds(commands: Command[], getContext?: () => Record<
 /**
  * Validate all commands upfront (call on init to catch typos early)
  * @param {Command[]} commands
- * @param {Input[]} inputs - The inputs whose bindings to check
+ * @param {KeybindsOptions} options - As for keybinds(): the inputs, and releases and anyModifiers if used
  * @returns {true}
  * @throws {Error} if any binding is invalid
  */
-export declare function validateCommands(commands: Command[], inputs: Input[]): true;
+export declare function validateCommands(commands: Command[], options: KeybindsOptions): true;
 /**
  * Execute a command by id
  * @param {Command[]} commands

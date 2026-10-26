@@ -30,6 +30,25 @@ import { keybinds, keys, mouse } from 'keybinds'
 keybinds(commands, getContext, { inputs: [keys(), mouse()] })
 ```
 
+Binding syntax beyond modifiers and key names is opt-in the same way, each piece its own module. Without it, that syntax is an error naming what to add.
+
+| Syntax | Needs |
+|--------|-------|
+| `?`, `!`, `/`: typed characters | `keys(symbols())` |
+| `up`, `down`, `left`, `right`, `plus` | `keys(aliases())` |
+| `k:up`: releases | `keybinds(..., { releases: releases() })` |
+| `anyModifiers: true` on a command | `keybinds(..., { anyModifiers: anyModifiers() })` |
+
+```js
+import { keybinds, keys, symbols, aliases, releases, anyModifiers } from 'keybinds'
+
+keybinds(commands, getContext, {
+  inputs: [keys(symbols(), aliases())],
+  releases: releases(),
+  anyModifiers: anyModifiers(),
+})
+```
+
 ## Key Bindings
 
 Key strings support modifiers and the `$mod` macro:
@@ -45,14 +64,17 @@ keys: ['Backspace', 'Delete']  // Multiple triggers
 
 **Special keys:** `Escape`, `Enter`, `Tab`, `Space`, `Backspace`, `Delete`, `ArrowUp`, `ArrowDown`, etc.
 
-**Characters:** any single character can be bound as itself. A symbol binds however it's typed, so `?` fires on Shift+/ on a US layout and on whatever key types `?` elsewhere. Write the `+` key as `plus`.
+**Letters and digits** bind as themselves, in any script (`é` too).
+
+**Physical keys:** `shift+1` means Shift and the 1 key (`shift+digit1`). Punctuation keys go by name: `slash`, `comma`, `period`, `semicolon`, `quote`, `backquote`, `minus`, `equal`, `bracketleft`, `bracketright`, `backslash`, and `digit0`–`digit9`. They're shown as the character they type.
+
+**Characters,** with `keys(symbols())`: any other single character can be bound as itself, and binds however it's typed, so `?` fires on Shift+/ on a US layout and on whatever key types `?` elsewhere. `shift+/` then means Shift and the slash key. With `aliases()` too, write the `+` key as `plus`.
 
 ```js
-keys: ['?']             // the ? character, Shift included
-keys: ['$mod+plus']     // Ctrl/Cmd and +
+keys: ['?']             // the ? character, Shift included (symbols())
+keys: ['$mod+plus']     // Ctrl/Cmd and + (symbols() and aliases())
+keys: ['shift+slash']   // the same key as '?' on a US layout, with no extra syntax
 ```
-
-**Physical keys:** `shift+/` means Shift and the slash key (the same as `shift+slash`); `shift+1` means Shift and the 1 key (`shift+digit1`). The names are `slash`, `comma`, `period`, `semicolon`, `quote`, `backquote`, `minus`, `equal`, `bracketleft`, `bracketright`, `backslash` and `digit0`–`digit9`, and they're shown as the character they type.
 
 ## Mouse Bindings
 
@@ -79,7 +101,7 @@ Gamepads have no events, so their buttons are read every animation frame, only w
 
 ## Press and Release Bindings
 
-A trailing `:up` binds the moment the key or button comes up instead of going down:
+With `releases: releases()`, a trailing `:up` binds the moment the key or button comes up instead of going down:
 
 ```js
 keys: ['Space', 'Space:up']
@@ -95,10 +117,10 @@ mouse: ['MiddleClick', 'MiddleClick:up']
 
 ## Held Controls
 
-A game reads its movement every frame instead of reacting to each key event. `keybinds()` returns its cleanup function with a `held(id)` on it, true from the moment a command's press fires until that key or button comes up (or the window loses focus, for keys):
+A game reads its movement every frame instead of reacting to each key event. `keybinds()` returns its cleanup function with a `held(id)` on it, true from the moment a command's press fires until that key or button comes up (or the window loses focus, for keys). It needs no release bindings:
 
 ```js
-const kb = keybinds([{ id: 'forward', label: 'Move forward', keys: ['w'], anyModifiers: true, execute: () => {} }], undefined, { inputs: [keys()] })
+const kb = keybinds([{ id: 'forward', label: 'Move forward', keys: ['w'], anyModifiers: true, execute: () => {} }], undefined, { inputs: [keys()], anyModifiers: anyModifiers() })
 function frame() {
   if (kb.held('forward')) player.walk()
   requestAnimationFrame(frame)
@@ -136,7 +158,7 @@ With `CommandHub`, `hub.setAxes(owner, () => axes)` adds them; they're rebindabl
 
 ## Ignoring Other Modifiers
 
-By default a binding needs exactly its modifiers: `w` doesn't fire while Shift is held. A game moving on WASD wants the opposite, so a command with `anyModifiers: true` matches whatever else is held. A binding's own modifiers are still required (`shift+x` still needs Shift), and a command bound exactly to the keys pressed comes first.
+By default a binding needs exactly its modifiers: `w` doesn't fire while Shift is held. A game moving on WASD wants the opposite, so with `anyModifiers: anyModifiers()` passed to `keybinds()`, a command with `anyModifiers: true` matches whatever else is held. A binding's own modifiers are still required (`shift+x` still needs Shift), and a command bound exactly to the keys pressed comes first.
 
 ```js
 { id: 'forward', label: 'Move forward', keys: ['w', 'w:up'], anyModifiers: true, execute: (ctx, e) => held(e.type === 'keydown') }
@@ -265,11 +287,12 @@ const store = new BindingsStore(schema, {
 When commands come from several parts of an app, and come and go with its state, `CommandHub` does all of the above in one place: it collects commands from every source, derives the schema from them, keeps each person's rebindings, listens for keys, and keeps the components and any command buttons up to date.
 
 ```js
-import { CommandHub, keysUI, mouseUI, CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu } from 'keybinds'
+import { CommandHub, keysUI, mouseUI, releases, CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu } from 'keybinds'
 import 'keybinds/styles/palette.css'
 
 const hub = new CommandHub({
   inputs: [keysUI(), mouseUI()],  // what it listens to; the UI halves, since its components show and record them
+  releases: releases(),       // and anyModifiers: anyModifiers(), as for keybinds()
   components: [CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu],
   host: document.body,        // where the components go
   storageKey: 'myapp:keys',   // rebindings are kept under "myapp:keys:<scope>"; or pass

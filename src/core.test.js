@@ -14,36 +14,36 @@ describe('validateCommands', () => {
     expect(validateCommands([
       { id: 'save', label: 'Save', keys: ['$mod+s'], execute: () => {} },
       { id: 'click', label: 'Click', mouse: ['Click'], execute: () => {} },
-    ], ALL.inputs)).toBe(true)
+    ], ALL)).toBe(true)
   })
 
   test('throws on missing id', () => {
-    expect(() => validateCommands([/** @type {any} */ ({ label: 'X', execute: () => {} })], ALL.inputs))
+    expect(() => validateCommands([/** @type {any} */ ({ label: 'X', execute: () => {} })], ALL))
       .toThrow('Command missing id')
   })
 
   test('throws on invalid key', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', keys: ['$mod+banana'], execute: () => {} },
-    ], ALL.inputs)).toThrow('Unknown key "banana"')
+    ], ALL)).toThrow('Unknown key "banana"')
   })
 
   test('throws on modifier-only key binding', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', keys: ['$mod'], execute: () => {} },
-    ], ALL.inputs)).toThrow('no key (only modifiers)')
+    ], ALL)).toThrow('no key (only modifiers)')
   })
 
   test('throws on multi-key binding', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', keys: ['a+b'], execute: () => {} },
-    ], ALL.inputs)).toThrow('multiple keys')
+    ], ALL)).toThrow('multiple keys')
   })
 
   test('throws on invalid mouse binding', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', mouse: ['DoubleClick'], execute: () => {} },
-    ], ALL.inputs)).toThrow('Unknown mouse button')
+    ], ALL)).toThrow('Unknown mouse button')
   })
 })
 
@@ -616,10 +616,10 @@ describe('press and release bindings', () => {
   })
 
   test('validation accepts :up and rejects scroll release and empty release', () => {
-    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+k:up', 'Escape:UP'], mouse: ['middle:up'], execute: () => {} }], ALL.inputs)).not.toThrow()
-    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['scrollup:up'], execute: () => {} }], ALL.inputs)).toThrow()
-    expect(() => validateCommands([{ id: 'x', label: 'X', keys: [':up'], execute: () => {} }], ALL.inputs)).toThrow()
-    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+:up'], execute: () => {} }], ALL.inputs)).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+k:up', 'Escape:UP'], mouse: ['middle:up'], execute: () => {} }], ALL)).not.toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['scrollup:up'], execute: () => {} }], ALL)).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: [':up'], execute: () => {} }], ALL)).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+:up'], execute: () => {} }], ALL)).toThrow()
   })
 
   test('format adds a Release part', () => {

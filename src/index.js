@@ -14,9 +14,13 @@ import { ContextMenu } from './components/context-menu.js'
 import { RadialMenu } from './components/radial-menu.js'
 
 export {
-  keybinds, validateCommands, executeCommand, findConflict, bindingParts, isActive,
+  keybinds, validateCommands, executeCommand, findConflict, bindingParts, isActive, parseBinding,
 } from './core.js'
 export { keys, parseKey } from './keys.js'
+export { symbols } from './keys-symbols.js'
+export { aliases } from './keys-aliases.js'
+export { releases } from './releases.js'
+export { anyModifiers } from './any-modifiers.js'
 export { keysUI, formatKeyParts, eventToBindingString } from './keys-ui.js'
 export { mouse, mouseMatches } from './mouse.js'
 export { mouseUI, formatMouseParts, eventToMouseBindingString } from './mouse-ui.js'

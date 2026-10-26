@@ -4,7 +4,7 @@
  */
 
 import {
-  RELEASE_SUFFIX, NO_MODS, splitRelease, parseMods, modsToPrefix, eventMods, holdsAll, overlayOpen,
+  RELEASE_SUFFIX, NO_MODS, parseMods, modsToPrefix, eventMods, holdsAll, overlayOpen,
 } from './core.js'
 
 /** @typedef {import('./core.js').Modifiers} Modifiers */
@@ -16,7 +16,6 @@ import {
  * @typedef {Object} ParsedMouse
  * @property {Modifiers} mods
  * @property {number} button - Index into BUTTON_NAMES
- * @property {boolean} release - Binding fires when the button comes up ("middle:up")
  */
 
 const VALID_MOUSE = new Set([
@@ -36,19 +35,19 @@ const POINTER_BUTTON_COUNT = 5
 const BUTTON_BITS = [1, 4, 2, 8, 16]
 
 /**
- * Parse a mouse binding like "$mod+Click", "MiddleClick" or "Back:up"
+ * Parse a mouse binding like "$mod+Click" or "MiddleClick", without its release suffix
  * Supported: Click/LeftClick, RightClick, MiddleClick, BackClick, ForwardClick, Scroll{Up,Down,Left,Right}
- * A trailing ":up" binds the button's release.
  * @param {string} binding
+ * @param {boolean} [release] - Whether it had a release suffix; scrolling has no release
  * @returns {ParsedMouse}
  * @throws {Error} if mouse binding is invalid
  */
-export function parseMouse(binding) {
+export function parseMouse(binding, release = false) {
   if (!binding || typeof binding !== 'string') {
     throw new Error(`Invalid mouse binding: ${binding}`)
   }
 
-  const { body, release } = splitRelease(binding.toLowerCase())
+  const body = binding.toLowerCase()
   const parts = body.split('+').map(p => p.trim()).filter(Boolean)
   if (parts.length === 0) {
     throw new Error(`Empty mouse binding: "${binding}"`)
@@ -81,7 +80,7 @@ export function parseMouse(binding) {
   else if (btn === 'scrollleft') button = 7
   else if (btn === 'scrollright') button = 8
 
-  return { mods, button, release }
+  return { mods, button }
 }
 
 /**
@@ -90,7 +89,7 @@ export function parseMouse(binding) {
  * @returns {string}
  */
 function mouseToLookup(parsed) {
-  return `${modsToPrefix(parsed.mods)}${BUTTON_NAMES[parsed.button]}${parsed.release ? RELEASE_SUFFIX : ''}`
+  return `${modsToPrefix(parsed.mods)}${BUTTON_NAMES[parsed.button]}`
 }
 
 /**
@@ -162,8 +161,8 @@ export function mouseMatches(cmd, event) {
   const lookup = eventToMouseLookup(event, cmd.anyModifiers ? '' : modsToPrefix(eventMods(event)))
   if (!lookup) return false
   return (cmd.mouse ?? []).some((m) => {
+    if (m.trim().toLowerCase().endsWith(RELEASE_SUFFIX)) return false
     const parsed = parseMouse(m)
-    if (parsed.release) return false
     if (!cmd.anyModifiers) return mouseToLookup(parsed) === lookup
     return mouseToLookup({ ...parsed, mods: NO_MODS }) === lookup && holdsAll(parsed.mods, eventMods(event))
   })
@@ -180,8 +179,8 @@ export function mouse(options = {}) {
   const { step: WHEEL_STEP = 50, idle: WHEEL_IDLE = 200 } = options.wheel ?? {}
   return {
     field: 'mouse',
-    parse(binding) {
-      const parsed = parseMouse(binding)
+    parse(binding, release) {
+      const parsed = parseMouse(binding, release)
       return { lookup: mouseToLookup(parsed), loose: mouseToLookup({ ...parsed, mods: NO_MODS }), mods: parsed.mods }
     },
     matches: (cmd, event) => mouseMatches(cmd, /** @type {MouseEvent} */ (event)),
@@ -214,6 +213,7 @@ export function mouse(options = {}) {
           if (event.buttons & (BUTTON_BITS[button] ?? 0)) continue
           if (event.type === 'mouseup' && event.button === button) continue
           d.presses.delete(id)
+          if (!d.releases) continue
           const release = new MouseEvent('mouseup', { button, cancelable: true })
           const found = candidates(release, press.mods, RELEASE_SUFFIX)
           if (found) d.release(found, press, release)
@@ -245,7 +245,7 @@ export function mouse(options = {}) {
         if (!press) return
         d.presses.delete(String(event.button))
 
-        const found = candidates(event, press.mods, RELEASE_SUFFIX)
+        const found = d.releases ? candidates(event, press.mods, RELEASE_SUFFIX) : undefined
         const consumed = !!found && d.release(found, press, event, { blocked: overlayOpen(/** @type {Element | null} */ (event.target)) })
 
         // Browsers navigate on a side button's mouseup/auxclick, so cancel both while bound

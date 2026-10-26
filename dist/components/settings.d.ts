@@ -13,6 +13,7 @@ export type AnyStore = import('../store.js').BindingsStore<any>;
  * Properties:
  *   store: BindingsStore  - Reactive bindings store
  *   inputs: Input[]       - Which bindings are shown and can be recorded (default: keys only)
+ *   releases: boolean     - Offer release bindings ("k:up"); set when keybinds() has releases() (default: false)
  *   open: boolean         - Show/hide the settings panel
  *
  * Events:

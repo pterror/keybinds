@@ -1,9 +1,10 @@
 /**
- * Keyboard input: bindings like "$mod+k", "Escape", "?" or "k:up". Showing and recording them is
- * keybinds/keys-ui.
+ * Keyboard input: bindings like "$mod+k", "shift+slash" or "Escape". More syntax is opt-in, each
+ * its own module passed to keys(): symbols() for "?" and other typed characters, aliases() for
+ * "up" and "plus". Showing and recording bindings is keybinds/keys-ui.
  */
 
-import { RELEASE_SUFFIX, NO_MODS, splitRelease, parseMods, modsToPrefix, eventMods, overlayOpen, inInput } from './core.js'
+import { RELEASE_SUFFIX, NO_MODS, parseMods, modsToPrefix, eventMods, overlayOpen, inInput } from './core.js'
 
 /** @typedef {import('./core.js').Modifiers} Modifiers */
 /** @typedef {import('./core.js').Input} Input */
@@ -12,84 +13,59 @@ import { RELEASE_SUFFIX, NO_MODS, splitRelease, parseMods, modsToPrefix, eventMo
  * @typedef {Object} ParsedKey
  * @property {Modifiers} mods
  * @property {string} key
- * @property {boolean} release - Binding fires when the key comes up ("k:up")
  */
-
-// Alias key names, resolved to the name a real key event reports
-export const KEY_ALIASES = /** @type {Record<string, string>} */ ({
-  up: 'arrowup',
-  down: 'arrowdown',
-  left: 'arrowleft',
-  right: 'arrowright',
-  // "+" separates the parts of a binding, so the key itself is written "plus"
-  plus: '+'
-})
-
-// Punctuation keys, and the name of the physical key that types each on a US layout (event.code)
-export const PUNCTUATION_CODES = /** @type {Record<string, string>} */ ({
-  '[': 'bracketleft', ']': 'bracketright', '\\': 'backslash', ';': 'semicolon', "'": 'quote',
-  ',': 'comma', '.': 'period', '/': 'slash', '`': 'backquote', '-': 'minus', '=': 'equal'
-})
 
 /**
- * A single printable character that isn't a letter ("?", "!", "+", "é" is a letter).
- * Shift is part of typing these, so a binding to one matches however it was typed.
- * @param {string} key
- * @returns {boolean}
+ * A piece of key binding syntax beyond modifiers and key names
+ * @typedef {Object} KeySyntax
+ * @property {string} name
+ * @property {(name: string) => string | undefined} [alias] - The key a name stands for
+ * @property {(key: string) => boolean} [accepts] - Keys it makes bindable
+ * @property {(key: string) => string | undefined} [shifted] - What a binding with Shift means instead
+ * @property {(key: string, prefix: string, suffix: string) => string[]} [lookups] - More lookups for a key event
  */
-export function isSymbolKey(key) {
-  return [...key].length === 1 && key.trim() !== '' && key.toLowerCase() === key.toUpperCase() && !/[0-9]/.test(key)
-}
 
-// Named keys; any single printable character can be bound too
+// Named keys, by the name a key event reports (event.key, or event.code for physical keys)
 export const NAMED_KEY = /^(f([1-9]|1[0-2])|escape|enter|tab|space|backspace|delete|insert|home|end|page(up|down)|arrow(up|down|left|right)|bracket(left|right)|backslash|semicolon|quote|comma|period|slash|backquote|minus|equal|digit[0-9])$/
 
 /**
+ * A letter (in any script) or a digit: what a key types on its own, bindable as itself
  * @param {string} key
- * @returns {boolean}
  */
-export function isValidKey(key) {
-  return NAMED_KEY.test(key) || ([...key].length === 1 && key.trim() !== '')
-}
+export const isLetterOrDigit = (key) => [...key].length === 1 && (key.toLowerCase() !== key.toUpperCase() || /[0-9]/.test(key))
 
 /**
- * Parse a key string like "Ctrl+Shift+K" or "K:up" into normalized form
+ * Parse a key string like "Ctrl+Shift+K" into normalized form. Its release suffix, if any, has
+ * already been taken off.
  * @param {string} keyStr
+ * @param {KeySyntax[]} [syntax]
  * @returns {ParsedKey}
  * @throws {Error} if key binding is invalid
  */
-export function parseKey(keyStr) {
+export function parseKey(keyStr, syntax = []) {
   if (!keyStr || typeof keyStr !== 'string') {
     throw new Error(`Invalid key binding: ${keyStr}`)
   }
-
-  const { body, release } = splitRelease(keyStr.toLowerCase())
-  const parts = body.split('+').map(p => p.trim()).filter(Boolean)
-  if (parts.length === 0) {
-    throw new Error(`Empty key binding: "${keyStr}"`)
-  }
-
+  const parts = keyStr.toLowerCase().split('+').map(p => p.trim()).filter(Boolean)
   const { mods, remaining } = parseMods(parts)
-
   const rawKey = remaining[0]
   if (rawKey === undefined) {
     throw new Error(`Key binding has no key (only modifiers): "${keyStr}"`)
   }
-  let key = KEY_ALIASES[rawKey] ?? rawKey
   if (remaining.length > 1) {
     throw new Error(`Key binding has multiple keys: "${keyStr}" (got: ${remaining.join(', ')})`)
   }
-  if (!isValidKey(key)) {
+  let key = rawKey
+  for (const s of syntax) key = s.alias?.(key) ?? key
+  if (!isLetterOrDigit(key) && !NAMED_KEY.test(key) && !syntax.some((s) => s.accepts?.(key))) {
     throw new Error(`Unknown key "${rawKey}" in binding "${keyStr}"`)
   }
-  // With Shift held, a punctuation or digit key types a different character ("shift+/" types "?"),
-  // so the binding means the physical key: "shift+slash", "shift+digit1".
+  // With Shift held a digit types a different character, so the binding means the physical key
   if (mods.shift) {
-    const code = PUNCTUATION_CODES[key] ?? (/^[0-9]$/.test(key) ? `digit${key}` : undefined)
-    if (code) key = code
+    if (/^[0-9]$/.test(key)) key = `digit${key}`
+    for (const s of syntax) key = s.shifted?.(key) ?? key
   }
-
-  return { mods, key, release }
+  return { mods, key }
 }
 
 /**
@@ -98,7 +74,7 @@ export function parseKey(keyStr) {
  * @returns {string}
  */
 export function keyToLookup(parsed) {
-  return `${modsToPrefix(parsed.mods)}${parsed.key}${parsed.release ? RELEASE_SUFFIX : ''}`
+  return `${modsToPrefix(parsed.mods)}${parsed.key}`
 }
 
 /**
@@ -106,9 +82,10 @@ export function keyToLookup(parsed) {
  * @param {KeyboardEvent} event
  * @param {string} [prefix] - Modifier prefix to use instead of the event's own
  * @param {string} [suffix] - Appended to every lookup (e.g. ":up")
+ * @param {KeySyntax[]} [syntax]
  * @returns {string[]}
  */
-export function eventToKeyLookups(event, prefix = modsToPrefix(eventMods(event)), suffix = '') {
+export function eventToKeyLookups(event, prefix = modsToPrefix(eventMods(event)), suffix = '', syntax = []) {
   const key = event.key.toLowerCase()
   const code = event.code.toLowerCase()
   const codeKey = code.startsWith('key') ? code.slice(3) : null
@@ -116,20 +93,21 @@ export function eventToKeyLookups(event, prefix = modsToPrefix(eventMods(event))
   const lookups = [`${prefix}${key}${suffix}`]
   if (code !== key) lookups.push(`${prefix}${code}${suffix}`)
   if (codeKey && codeKey !== key) lookups.push(`${prefix}${codeKey}${suffix}`)
-  // "?" is bound as "?", but typing it takes Shift on most layouts
-  if (isSymbolKey(key) && prefix.includes('shift+')) lookups.push(`${prefix.replace('shift+', '')}${key}${suffix}`)
+  for (const s of syntax) if (s.lookups) lookups.push(...s.lookups(key, prefix, suffix))
   return lookups
 }
 
 /**
  * The keyboard
- * @returns {Input}
+ * @param {...KeySyntax} syntax - More binding syntax: symbols(), aliases()
+ * @returns {Input & { syntax: KeySyntax[] }}
  */
-export function keys() {
+export function keys(...syntax) {
   return {
     field: 'keys',
+    syntax,
     parse(binding) {
-      const parsed = parseKey(binding)
+      const parsed = parseKey(binding, syntax)
       return { lookup: keyToLookup(parsed), loose: keyToLookup({ ...parsed, mods: NO_MODS }), mods: parsed.mods }
     },
 
@@ -141,7 +119,7 @@ export function keys() {
        * @param {string} [suffix]
        */
       const candidates = (event, mods, suffix = '') =>
-        d.candidates(eventToKeyLookups(event, modsToPrefix(mods), suffix), eventToKeyLookups(event, '', suffix), mods)
+        d.candidates(eventToKeyLookups(event, modsToPrefix(mods), suffix, syntax), eventToKeyLookups(event, '', suffix, syntax), mods)
 
       /** @param {Event} e */
       function onDown(e) {
@@ -166,6 +144,7 @@ export function keys() {
         const press = d.presses.get(id)
         if (!press) return
         d.presses.delete(id)
+        if (!d.releases) return
         const found = candidates(event, press.mods, RELEASE_SUFFIX)
         if (found) {
           d.release(found, press, event, { blocked: overlayOpen(/** @type {Element | null} */ (event.target)), inInput: inInput(event.target) })
@@ -178,6 +157,7 @@ export function keys() {
       function onBlur() {
         const presses = [...d.presses.values()]
         d.presses.clear()
+        if (!d.releases) return
         for (const press of presses) {
           const event = new KeyboardEvent('keyup', { key: /** @type {string} */ (press['key']), code: /** @type {string} */ (press['code']), cancelable: true })
           const found = candidates(event, press.mods, RELEASE_SUFFIX)

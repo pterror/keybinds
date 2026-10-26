@@ -10,6 +10,7 @@ export type InputUI = import('./core.js').InputUI;
 export declare function formatAxisParts(binding: string): string[];
 /**
  * Axes, shown and recorded as well as read
+ * @param {...import("./keys.js").KeySyntax} syntax - As for axes()
  * @returns {InputUI}
  */
-export declare function axesUI(): InputUI;
+export declare function axesUI(...syntax: import("./keys.js").KeySyntax[]): InputUI;

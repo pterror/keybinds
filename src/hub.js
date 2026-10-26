@@ -28,7 +28,9 @@ import { createComponent } from './components/create.js'
  * @property {string} [storageKey] - localStorage key for people's rebindings (default "keybinds"); the scope is appended
  * @property {(scope: string) => BindingsStorage} [storage] - Keep rebindings somewhere other than
  *   localStorage, separately per scope. Takes the place of `storageKey`
- * @property {Omit<KeybindsOptions, 'inputs' | 'axes'>} [listen] - Passed on to keybinds(): target, capture, onExecute
+ * @property {import('./core.js').Releases} [releases] - From releases(), for release bindings ("k:up")
+ * @property {import('./core.js').AnyModifiers} [anyModifiers] - From anyModifiers(), for commands with `anyModifiers`
+ * @property {Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'anyModifiers'>} [listen] - Passed on to keybinds(): target, capture, onExecute
  */
 
 /**
@@ -76,7 +78,11 @@ export class CommandHub extends EventTarget {
     const key = options.storageKey ?? 'keybinds'
     /** @type {(scope: string) => BindingsStorage} */
     this._storage = options.storage ?? ((scope) => localStorageBindings(`${key}:${scope}`))
-    this._listen = options.listen ?? {}
+    /** What keybinds() is given besides the commands and axes */
+    /** @type {KeybindsOptions} */
+    this._options = { ...options.listen, inputs: this.inputs }
+    if (options.releases) this._options.releases = options.releases
+    if (options.anyModifiers) this._options.anyModifiers = options.anyModifiers
     /** @type {(def: D) => Command} */
     this._adapt = options.adapt ?? ((def) => /** @type {Command} */ (/** @type {unknown} */ (def)))
     /** @type {{ owner: string, get: () => D[] }[]} */
@@ -286,7 +292,7 @@ export class CommandHub extends EventTarget {
       const cmd = { ...this._adapt(d) }
       for (const f of fields) cmd[f] = bound[d.id]?.[f]
       try {
-        validateCommands([/** @type {Command} */ (cmd)], this.inputs)
+        validateCommands([/** @type {Command} */ (cmd)], this._options)
       } catch (e) {
         // One unreadable binding mustn't take every other key down with it
         console.error(`keybinds: dropping the bindings of "${d.id}"`, e)
@@ -303,7 +309,7 @@ export class CommandHub extends EventTarget {
     for (const a of this._axes.values()) {
       const def = { ...a, axes: bound[a.id]?.['axes'] ?? a.axes }
       try {
-        if (axisInput) def.axes.forEach((b) => axisInput.parse(b))
+        if (axisInput) def.axes.forEach((b) => axisInput.parse(b, false))
       } catch (e) {
         console.error(`keybinds: dropping the sources of axis "${a.id}"`, e)
         def.axes = []
@@ -311,12 +317,15 @@ export class CommandHub extends EventTarget {
       axes.push(def)
     }
     const hasBindings = (/** @type {Command} */ c) => fields.some((f) => /** @type {unknown[] | undefined} */ (/** @type {Record<string, unknown>} */ (c)[f])?.length)
-    this._unbind = keybinds(live.filter(hasBindings), () => /** @type {Record<string, unknown>} */ (this.context()), { ...this._listen, inputs: this.inputs, axes })
+    this._unbind = keybinds(live.filter(hasBindings), () => /** @type {Record<string, unknown>} */ (this.context()), { ...this._options, axes })
     const visible = live.filter((c) => !c.hidden)
     if (this.palette) this.palette.commands = visible
     if (this.cheatsheet) this.cheatsheet.commands = visible
     if (this.menu) this.menu.commands = live
-    if (this.settings) this.settings.store = this._store
+    if (this.settings) {
+      this.settings.releases = !!this._options.releases
+      this.settings.store = this._store
+    }
     this.syncContext()
     this.dispatchEvent(new Event('refresh'))
   }

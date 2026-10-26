@@ -75,6 +75,8 @@
  * @property {EventTarget} target - Where to listen
  * @property {boolean} capture - Whether to listen in the capture phase
  * @property {boolean} bound - Whether any command has a binding for this input
+ * @property {boolean} releases - Whether release bindings are on (releases()); without them an
+ *   input only needs to note that a press ended
  * @property {AxisDef[]} axes - The axes passed to keybinds()
  * @property {() => Record<string, unknown>} context
  * @property {Map<string, Press>} presses - This input's held presses, by whatever id it chooses
@@ -96,7 +98,8 @@
  * @typedef {Object} Input
  * @property {string} field - The command (or axis) field holding its bindings: "keys", "mouse", ...
  * @property {boolean} [axis] - Its bindings are an axis's sources rather than a command's triggers
- * @property {(binding: string) => ParsedBinding} parse - Throws if the binding is invalid
+ * @property {(binding: string, release: boolean) => ParsedBinding} parse - Throws if the binding is invalid.
+ *   Gets the binding without its release suffix (":up"); `release` says whether it had one
  * @property {(cmd: Command, event: Event) => boolean} [matches] - Whether an event is one of the command's press bindings
  * @property {(d: Dispatch) => InputHandle} listen
  */
@@ -343,9 +346,28 @@ export function inInput(tgt) {
 const BINDING_FIELDS = /** @type {const} */ (['keys', 'mouse', 'gamepad'])
 
 /**
+ * Runs a release's candidates: what releases() gives keybinds()
+ * @typedef {(candidates: Command[], press: Press, event: Event, options: { blocked?: boolean, inInput?: boolean },
+ *   run: { context: Record<string, unknown>, execute: (cmd: Command, ctx: Record<string, unknown>, event: Event) => boolean }) => boolean} Releases
+ */
+
+/**
+ * Finds `anyModifiers` commands: what anyModifiers() gives keybinds(), one table per input
+ * @typedef {{ table: () => {
+ *   add: (parsed: ParsedBinding, cmd: Command) => void,
+ *   find: (loose: string[], mods: Modifiers, found: Command[] | undefined) => Command[] | undefined,
+ *   size: () => number,
+ * } }} AnyModifiers
+ */
+
+/**
  * @typedef {Object} KeybindsOptions
  * @property {Input[]} [inputs] - What to listen to: e.g. [keys(), mouse()]. A command bound
  *   through an input that isn't here is an error
+ * @property {Releases} [releases] - From releases(): bindings to an input coming up ("k:up").
+ *   Without it, such a binding is an error
+ * @property {AnyModifiers} [anyModifiers] - From anyModifiers(): commands whose bindings match
+ *   whatever other modifiers are held. Without it, such a command is an error
  * @property {EventTarget} [target] - Where to listen (default: window)
  * @property {(cmd: Command, ctx: Record<string, unknown>) => void} [onExecute] - Called after a command consumes an event
  * @property {boolean} [capture] - Listen in the capture phase, so a bound key reaches its command before
@@ -353,6 +375,69 @@ const BINDING_FIELDS = /** @type {const} */ (['keys', 'mouse', 'gamepad'])
  *   leaves the event alone.
  * @property {AxisDef[]} [axes] - Continuous inputs, read with `axis(id)` on what keybinds() returns
  */
+
+/**
+ * A binding through an input. The release suffix (":up") is the core's: it's taken off before the
+ * input parses the rest, and allowed only with releases()
+ * @param {Input} input
+ * @param {string} binding
+ * @param {boolean} releases - Whether release bindings are allowed
+ * @returns {ParsedBinding}
+ */
+export function parseBinding(input, binding, releases) {
+  const trimmed = typeof binding === 'string' ? binding.trim() : binding
+  const release = typeof trimmed === 'string' && trimmed.toLowerCase().endsWith(RELEASE_SUFFIX)
+  if (release && !releases) throw new Error(`"${binding}" is a release binding, which needs releases()`)
+  const parsed = input.parse(release ? trimmed.slice(0, -RELEASE_SUFFIX.length) : trimmed, release)
+  if (!release) return parsed
+  return { ...parsed, lookup: parsed.lookup + RELEASE_SUFFIX, loose: parsed.loose + RELEASE_SUFFIX }
+}
+
+/**
+ * Every command's bindings through one input, by lookup, checked
+ * @param {Command[]} commands
+ * @param {Input} input
+ * @param {KeybindsOptions} options
+ */
+function index(commands, input, options) {
+  /** @type {Map<string, Command[]>} */
+  const exact = new Map()
+  const loose = options.anyModifiers?.table() ?? null
+  for (const cmd of commands) {
+    for (const binding of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
+      if (cmd.anyModifiers && !loose) throw new Error(`Command "${cmd.id}" sets anyModifiers, which needs anyModifiers()`)
+      let parsed
+      try {
+        parsed = parseBinding(input, binding, !!options.releases)
+      } catch (e) {
+        throw new Error(`Command "${cmd.id}": ${e instanceof Error ? e.message : String(e)}`)
+      }
+      if (cmd.anyModifiers) loose?.add(parsed, cmd)
+      else {
+        const list = exact.get(parsed.lookup)
+        if (list) list.push(cmd)
+        else exact.set(parsed.lookup, [cmd])
+      }
+    }
+  }
+  return { exact, loose }
+}
+
+/**
+ * @param {Command[]} commands
+ * @param {KeybindsOptions} options
+ */
+function checkInputs(commands, options) {
+  const inputs = options.inputs ?? []
+  for (const field of BINDING_FIELDS) {
+    if (inputs.some((i) => i.field === field)) continue
+    const cmd = commands.find((c) => c[field]?.length)
+    if (cmd) throw new Error(`Command "${cmd.id}" has ${field} bindings, but no input reads ${field}`)
+  }
+  if ((options.axes ?? []).some((a) => a.axes.length) && !inputs.some((i) => i.axis)) {
+    throw new Error('There are axes, but no input reads them')
+  }
+}
 
 /**
  * Create keybind handler
@@ -377,16 +462,8 @@ const BINDING_FIELDS = /** @type {const} */ (['keys', 'mouse', 'gamepad'])
  *   `held(id)`: whether a command is held right now, and `axis(id)`: an axis's value
  */
 export function keybinds(commands, getContext = () => ({}), options = {}) {
-  const { inputs = [], target = window, onExecute, capture = false, axes = [] } = options
-
-  for (const field of BINDING_FIELDS) {
-    if (inputs.some((i) => i.field === field)) continue
-    const cmd = commands.find((c) => c[field]?.length)
-    if (cmd) throw new Error(`Command "${cmd.id}" has ${field} bindings, but no input reads ${field}`)
-  }
-  if (axes.some((a) => a.axes.length) && !inputs.some((i) => i.axis)) {
-    throw new Error('There are axes, but no input reads them')
-  }
+  const { inputs = [], target = window, onExecute, capture = false, axes = [], releases } = options
+  checkInputs(commands, options)
 
   /**
    * @param {Command} cmd
@@ -412,24 +489,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   const handles = []
 
   for (const input of inputs) {
-    /** @type {Map<string, Command[]>} */
-    const exact = new Map()
-    /** @type {Map<string, { cmd: Command, mods: Modifiers }[]>} */
-    const loose = new Map()
-    if (!input.axis) {
-      for (const cmd of commands) {
-        for (const binding of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
-          let parsed
-          try {
-            parsed = input.parse(binding)
-          } catch (e) {
-            throw new Error(`Command "${cmd.id}": ${e instanceof Error ? e.message : String(e)}`)
-          }
-          if (cmd.anyModifiers) add(loose, parsed.loose, { cmd, mods: parsed.mods })
-          else add(exact, parsed.lookup, cmd)
-        }
-      }
-    }
+    const { exact, loose } = input.axis ? { exact: new Map(), loose: null } : index(commands, input, options)
     /** @type {Map<string, Press>} */
     const presses = new Map()
     allPresses.push(presses)
@@ -438,7 +498,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     const d = {
       target,
       capture,
-      bound: exact.size > 0 || loose.size > 0,
+      bound: exact.size > 0 || (loose?.size() ?? 0) > 0,
+      releases: !!releases,
       axes,
       context: getContext,
       presses,
@@ -449,15 +510,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
           found = exact.get(l)
           if (found) break
         }
-        /** @type {{ cmd: Command, mods: Modifiers }[] | undefined} */
-        let anyMods
-        for (const l of looseLookups) {
-          anyMods = loose.get(l)
-          if (anyMods) break
-        }
-        const extra = (anyMods ?? []).filter((b) => holdsAll(b.mods, mods) && !found?.includes(b.cmd)).map((b) => b.cmd)
-        if (extra.length === 0) return found
-        return found ? [...found, ...extra] : extra
+        return loose ? loose.find(looseLookups, mods, found) : found
       },
       fire(candidates, event, { inInput = false, press } = {}) {
         const context = getContext()
@@ -471,21 +524,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
         }
         return null
       },
-      release(candidates, press, event, { blocked = false, inInput = false } = {}) {
-        const context = getContext()
-        let consumed = false
-        for (const cmd of candidates) {
-          if (press.fired.has(cmd)) {
-            if (tryExecute(cmd, context, event)) consumed = true
-            continue
-          }
-          if (consumed || blocked) continue
-          if (inInput && !cmd.captureInput) continue
-          if (!isActive(cmd, context)) continue
-          if (tryExecute(cmd, context, event)) consumed = true
-        }
-        return consumed
-      },
+      release: (candidates, press, event, opts = {}) =>
+        !!releases && releases(candidates, press, event, opts, { context: getContext(), execute: tryExecute }),
       isActive: (cmd) => isActive(cmd, getContext()),
       execute: (cmd, event) => tryExecute(cmd, getContext(), event),
     }
@@ -523,40 +563,18 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 }
 
 /**
- * @template V
- * @param {Map<string, V[]>} map
- * @param {string} k
- * @param {V} v
- */
-function add(map, k, v) {
-  const list = map.get(k)
-  if (list) list.push(v)
-  else map.set(k, [v])
-}
-
-/**
  * Validate all commands upfront (call on init to catch typos early)
  * @param {Command[]} commands
- * @param {Input[]} inputs - The inputs whose bindings to check
+ * @param {KeybindsOptions} options - As for keybinds(): the inputs, and releases and anyModifiers if used
  * @returns {true}
  * @throws {Error} if any binding is invalid
  */
-export function validateCommands(commands, inputs) {
+export function validateCommands(commands, options) {
   for (const cmd of commands) {
-    if (!cmd.id) {
-      throw new Error('Command missing id')
-    }
-    for (const input of inputs) {
-      for (const binding of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
-        try {
-          input.parse(binding)
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          throw new Error(`Command "${cmd.id}": ${msg}`)
-        }
-      }
-    }
+    if (!cmd.id) throw new Error('Command missing id')
   }
+  checkInputs(commands, options)
+  for (const input of options.inputs ?? []) if (!input.axis) index(commands, input, options)
   return true
 }
 
@@ -588,7 +606,7 @@ export function executeCommand(commands, id, context = {}) {
 export function findConflict(schema, bindingStr, input, excludeId) {
   let candidate
   try {
-    candidate = input.parse(bindingStr).lookup
+    candidate = parseBinding(input, bindingStr, true).lookup
   } catch {
     return null
   }
@@ -600,7 +618,7 @@ export function findConflict(schema, bindingStr, input, excludeId) {
 
     for (const b of bindings) {
       try {
-        if (input.parse(b).lookup === candidate) {
+        if (parseBinding(input, b, true).lookup === candidate) {
           return { commandId: id, label: binding.label }
         }
       } catch {

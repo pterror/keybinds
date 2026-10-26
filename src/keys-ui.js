@@ -3,9 +3,11 @@
  */
 
 import { RELEASE_SUFFIX, eventModParts, formatModPart, formatWithRelease } from './core.js'
-import { keys, KEY_ALIASES, PUNCTUATION_CODES, NAMED_KEY, isSymbolKey, isValidKey } from './keys.js'
+import { keys, NAMED_KEY, isLetterOrDigit } from './keys.js'
+import { PUNCTUATION_CODES, isSymbolKey } from './keys-symbols.js'
 
 /** @typedef {import('./core.js').InputUI} InputUI */
+/** @typedef {import('./keys.js').KeySyntax} KeySyntax */
 
 // How a physical key name is shown: the character it types on a US layout
 const CODE_GLYPHS = /** @type {Record<string, string>} */ ({
@@ -45,47 +47,53 @@ export function formatKeyParts(key) {
   return formatWithRelease(key, formatKeyPart)
 }
 
-const LETTER_OR_DIGIT = /^[a-z0-9]$/
+const ASCII_LETTER_OR_DIGIT = /^[a-z0-9]$/
 
 /**
- * Convert a KeyboardEvent to a canonical binding string (e.g. "$mod+shift+k")
+ * Convert a KeyboardEvent to a canonical binding string (e.g. "$mod+shift+k"), in the syntax the
+ * keyboard input reads: a typed character like "?" only with symbols(), "plus" only with aliases()
+ * too; otherwise the physical key ("shift+slash").
  *
  * Returns null for bare modifier presses (Shift/Ctrl/Alt/Meta alone) and keys that can't be bound.
  *
  * @param {KeyboardEvent} event
+ * @param {KeySyntax[]} [syntax]
  * @returns {string | null}
  */
-export function eventToBindingString(event) {
+export function eventToBindingString(event, syntax = []) {
   const key = event.key.toLowerCase()
   const suffix = event.type === 'keyup' ? RELEASE_SUFFIX : ''
 
   // Ignore bare modifier presses
   if (['shift', 'control', 'alt', 'meta'].includes(key)) return null
 
-  // Normalize key name — prefer event.key, fall back to the physical key when the character
-  // typed isn't one a binding names (Option+A types "å" on a Mac)
-  let normalizedKey = key === ' ' ? 'space' : key === '+' ? 'plus' : key
+  let name = key === ' ' ? 'space' : key
   const code = event.code.toLowerCase()
-  if (code.startsWith('key')) {
-    const codeKey = code.slice(3)
-    const named = LETTER_OR_DIGIT.test(key) || key in PUNCTUATION_CODES || NAMED_KEY.test(KEY_ALIASES[key] ?? key)
-    if (LETTER_OR_DIGIT.test(codeKey) && !named) normalizedKey = codeKey
+  // A letter key typing something no binding names (Option+A types "å" on a Mac) is the key itself
+  if (/^key[a-z]$/.test(code) && !ASCII_LETTER_OR_DIGIT.test(name) && !NAMED_KEY.test(name) && !isSymbolKey(name)) name = code.slice(3)
+
+  if (isSymbolKey(name)) {
+    const symbols = syntax.some((s) => s.name === 'symbols')
+    const aliases = syntax.some((s) => s.name === 'aliases')
+    // A symbol is recorded as the character typed ("?"), which already says Shift was needed
+    if (symbols && (name !== '+' || aliases)) return [...eventModParts(event, false), name === '+' ? 'plus' : name].join('+') + suffix
+    // Otherwise as the physical key that typed it
+    if (!NAMED_KEY.test(code)) return null
+    name = code
+  } else if (!isLetterOrDigit(name) && !NAMED_KEY.test(name)) {
+    return null
   }
-
-  if (!isValidKey(KEY_ALIASES[normalizedKey] ?? normalizedKey)) return null
-  // A symbol is recorded as the character typed ("?"), which already says Shift was needed
-  const shift = event.shiftKey && !isSymbolKey(KEY_ALIASES[normalizedKey] ?? normalizedKey)
-
-  return [...eventModParts(event, shift), normalizedKey].join('+') + suffix
+  return [...eventModParts(event), name].join('+') + suffix
 }
 
 /**
  * The keyboard, shown and recorded as well as listened to
+ * @param {...KeySyntax} syntax - As for keys()
  * @returns {InputUI}
  */
-export function keysUI() {
+export function keysUI(...syntax) {
   return {
-    ...keys(),
+    ...keys(...syntax),
     label: 'Key',
     format: formatKeyParts,
     release: () => true,
@@ -98,7 +106,7 @@ export function keysUI() {
       const down = (e) => {
         const event = /** @type {KeyboardEvent} */ (e)
         if (ignore(event) || event.key === 'Escape') return
-        const binding = eventToBindingString(event)
+        const binding = eventToBindingString(event, syntax)
         if (!binding) return // bare modifier
         event.preventDefault()
         event.stopPropagation()

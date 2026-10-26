@@ -3,7 +3,7 @@
  * Showing and recording them is keybinds/gamepad-ui.
  */
 
-import { RELEASE_SUFFIX, NO_MODS, splitRelease, anyOverlayOpen } from './core.js'
+import { RELEASE_SUFFIX, NO_MODS, anyOverlayOpen } from './core.js'
 
 /** @typedef {import('./core.js').Input} Input */
 /** @typedef {import('./core.js').Press} Press */
@@ -20,22 +20,21 @@ export const GAMEPAD_ALIASES = {
 export const hasPads = () => typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function'
 
 /**
- * Parse a gamepad binding like "a", "rt" or "start:up"
+ * Parse a gamepad binding like "a" or "rt", without its release suffix
  * @param {string} binding
- * @returns {{ button: number, release: boolean }}
+ * @returns {number} The button's index
  * @throws {Error} if the binding is invalid
  */
 function parseGamepad(binding) {
   if (!binding || typeof binding !== 'string') {
     throw new Error(`Invalid gamepad binding: ${binding}`)
   }
-  const { body, release } = splitRelease(binding.toLowerCase())
-  const name = GAMEPAD_ALIASES[body] ?? body
-  const button = GAMEPAD_BUTTONS.indexOf(name)
+  const body = binding.trim().toLowerCase()
+  const button = GAMEPAD_BUTTONS.indexOf(GAMEPAD_ALIASES[body] ?? body)
   if (button === -1) {
     throw new Error(`Unknown gamepad button "${body}" in binding "${binding}". Valid: ${GAMEPAD_BUTTONS.join(', ')}`)
   }
-  return { button, release }
+  return button
 }
 
 /**
@@ -47,8 +46,7 @@ export function gamepad() {
   return {
     field: 'gamepad',
     parse(binding) {
-      const { button, release } = parseGamepad(binding)
-      const lookup = `${GAMEPAD_BUTTONS[button]}${release ? RELEASE_SUFFIX : ''}`
+      const lookup = /** @type {string} */ (GAMEPAD_BUTTONS[parseGamepad(binding)])
       return { lookup, loose: lookup, mods: NO_MODS }
     },
     listen(d) {
@@ -71,7 +69,7 @@ export function gamepad() {
           const press = d.presses.get(id)
           if (!press) return
           d.presses.delete(id)
-          const found = d.candidates([`${name}${RELEASE_SUFFIX}`], [], NO_MODS)
+          const found = d.releases ? d.candidates([`${name}${RELEASE_SUFFIX}`], [], NO_MODS) : undefined
           if (found) d.release(found, press, event, { blocked: anyOverlayOpen() })
           return
         }
