@@ -39,6 +39,9 @@
  * @property {(ctx: Record<string, unknown>, event?: Event) => unknown} execute - Action
  * @property {boolean | undefined} [hidden] - Hide from search
  * @property {boolean | undefined} [captureInput] - Fire even in input fields
+ * @property {boolean | undefined} [anyModifiers] - Bindings match whatever other modifiers are held
+ *   (a binding's own modifiers are still required), e.g. a game's movement keys. A binding that
+ *   matches exactly still comes first
  * @property {string | string[] | undefined} [menu] - Context menu tag(s)
  * @property {number | undefined} [rank] - Where it's listed among matches, before relevance: higher first (default 0)
  */
@@ -308,18 +311,35 @@ function keyToLookup(parsed) {
   return `${modsToPrefix(parsed.mods)}${parsed.key}${parsed.release ? RELEASE_SUFFIX : ''}`
 }
 
+/** @type {Modifiers} */
+const NO_MODS = { ctrl: false, alt: false, shift: false, meta: false }
+
+/**
+ * Modifiers held during an event
+ * @param {KeyboardEvent | MouseEvent} event
+ * @returns {Modifiers}
+ */
+function eventMods(event) {
+  return { ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey, meta: event.metaKey }
+}
+
+/**
+ * Whether every modifier in `required` is among `held`
+ * @param {Modifiers} required
+ * @param {Modifiers} held
+ */
+function holdsAll(required, held) {
+  return (!required.ctrl || held.ctrl) && (!required.alt || held.alt) &&
+    (!required.shift || held.shift) && (!required.meta || held.meta)
+}
+
 /**
  * Modifier prefix of an event
  * @param {KeyboardEvent | MouseEvent} event
  * @returns {string}
  */
 function eventPrefix(event) {
-  return modsToPrefix({
-    ctrl: event.ctrlKey,
-    alt: event.altKey,
-    shift: event.shiftKey,
-    meta: event.metaKey
-  })
+  return modsToPrefix(eventMods(event))
 }
 
 /**
@@ -368,9 +388,10 @@ function eventToMouseLookup(event, prefix = eventPrefix(event), suffix = '') {
  * Convert a WheelEvent to a lookup key (e.g. "ctrl+scrollup")
  * Returns null if both deltas are zero.
  * @param {WheelEvent} event
+ * @param {string} [prefix] - Modifier prefix to use instead of the event's own
  * @returns {string | null}
  */
-function eventToWheelLookup(event) {
+function eventToWheelLookup(event, prefix = eventPrefix(event)) {
   let direction
   // Prefer vertical axis; fall back to horizontal
   if (event.deltaY < 0) direction = 'scrollup'
@@ -378,47 +399,69 @@ function eventToWheelLookup(event) {
   else if (event.deltaX < 0) direction = 'scrollleft'
   else if (event.deltaX > 0) direction = 'scrollright'
   else return null
-
-  const prefix = modsToPrefix({
-    ctrl: event.ctrlKey,
-    alt: event.altKey,
-    shift: event.shiftKey,
-    meta: event.metaKey
-  })
   return `${prefix}${direction}`
 }
 
 /**
+ * A binding of an `anyModifiers` command: looked up without modifiers, then checked for its own
+ * @typedef {{ cmd: Command, mods: Modifiers }} LooseBinding
+ */
+
+/**
+ * @typedef {Object} LookupTables
+ * @property {Map<string, Command[]>} keys
+ * @property {Map<string, Command[]>} mouse
+ * @property {Map<string, LooseBinding[]>} looseKeys - `anyModifiers` bindings, by their unmodified lookup
+ * @property {Map<string, LooseBinding[]>} looseMouse
+ */
+
+/**
  * Build lookup tables for O(1) dispatch
  * @param {Command[]} commands
- * @returns {{ keys: Map<string, Command[]>, mouse: Map<string, Command[]> }}
+ * @returns {LookupTables}
  */
 function buildLookupTables(commands) {
-  /** @type {Map<string, Command[]>} */
-  const keys = new Map()
-  /** @type {Map<string, Command[]>} */
-  const mouse = new Map()
+  /** @type {LookupTables} */
+  const tables = { keys: new Map(), mouse: new Map(), looseKeys: new Map(), looseMouse: new Map() }
+  /**
+   * @template V
+   * @param {Map<string, V[]>} map
+   * @param {string} k
+   * @param {V} v
+   */
+  const add = (map, k, v) => {
+    const list = map.get(k)
+    if (list) list.push(v)
+    else map.set(k, [v])
+  }
 
   for (const cmd of commands) {
-    if (cmd.keys) {
-      for (const key of cmd.keys) {
-        const lookup = keyToLookup(parseKey(key))
-        const list = keys.get(lookup)
-        if (list) list.push(cmd)
-        else keys.set(lookup, [cmd])
-      }
+    for (const key of cmd.keys ?? []) {
+      const parsed = parseKey(key)
+      if (cmd.anyModifiers) add(tables.looseKeys, keyToLookup({ ...parsed, mods: NO_MODS }), { cmd, mods: parsed.mods })
+      else add(tables.keys, keyToLookup(parsed), cmd)
     }
-    if (cmd.mouse) {
-      for (const binding of cmd.mouse) {
-        const lookup = mouseToLookup(parseMouse(binding))
-        const list = mouse.get(lookup)
-        if (list) list.push(cmd)
-        else mouse.set(lookup, [cmd])
-      }
+    for (const binding of cmd.mouse ?? []) {
+      const parsed = parseMouse(binding)
+      if (cmd.anyModifiers) add(tables.looseMouse, mouseToLookup({ ...parsed, mods: NO_MODS }), { cmd, mods: parsed.mods })
+      else add(tables.mouse, mouseToLookup(parsed), cmd)
     }
   }
 
-  return { keys, mouse }
+  return tables
+}
+
+/**
+ * Exact candidates first, then `anyModifiers` ones whose own modifiers are held
+ * @param {Command[] | undefined} exact
+ * @param {LooseBinding[] | undefined} loose
+ * @param {Modifiers} held
+ * @returns {Command[] | undefined}
+ */
+function withLoose(exact, loose, held) {
+  const extra = (loose ?? []).filter((b) => holdsAll(b.mods, held) && !exact?.includes(b.cmd)).map((b) => b.cmd)
+  if (extra.length === 0) return exact
+  return exact ? [...exact, ...extra] : extra
 }
 
 /**
@@ -482,6 +525,7 @@ function wheelDistance(event) {
  *   execute: ctx => any  - action (return false to propagate)
  *   hidden?: bool        - hide from search
  *   captureInput?: bool  - fire even when in input fields
+ *   anyModifiers?: bool  - match whatever other modifiers are held (game movement, say)
  *
  * @example
  * const cleanup = keybinds([
@@ -532,10 +576,44 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   }
 
   /**
-   * A held input. `prefix` is the modifier state at press time, which release
+   * A held input. `mods` is the modifier state at press time, which release
    * bindings match against; `fired` holds the commands whose press executed.
-   * @typedef {{ prefix: string, fired: Set<Command> }} Press
+   * @typedef {{ mods: Modifiers, fired: Set<Command> }} Press
    */
+
+  /**
+   * Commands a key event triggers, with the modifiers given (the press's, for a release)
+   * @param {KeyboardEvent} event
+   * @param {Modifiers} mods
+   * @param {string} [suffix]
+   */
+  function keyCandidates(event, mods, suffix = '') {
+    /** @type {Command[] | undefined} */
+    let exact
+    for (const l of eventToKeyLookups(event, modsToPrefix(mods), suffix)) {
+      exact = lookup.keys.get(l)
+      if (exact) break
+    }
+    /** @type {LooseBinding[] | undefined} */
+    let loose
+    for (const l of eventToKeyLookups(event, '', suffix)) {
+      loose = lookup.looseKeys.get(l)
+      if (loose) break
+    }
+    return withLoose(exact, loose, mods)
+  }
+
+  /**
+   * Commands a mouse event triggers, with the modifiers given (the press's, for a release)
+   * @param {MouseEvent} event
+   * @param {Modifiers} mods
+   * @param {string} [suffix]
+   */
+  function mouseCandidates(event, mods, suffix = '') {
+    const exact = eventToMouseLookup(event, modsToPrefix(mods), suffix)
+    const loose = eventToMouseLookup(event, '', suffix)
+    return withLoose(exact ? lookup.mouse.get(exact) : undefined, loose ? lookup.looseMouse.get(loose) : undefined, mods)
+  }
   /** @type {Map<string, Press>} */
   const keyPresses = new Map()
   /** @type {Map<number, Press>} */
@@ -586,18 +664,12 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     const id = event.code || event.key
     let press = keyPresses.get(id)
     if (!press || !event.repeat) {
-      press = { prefix: eventPrefix(event), fired: new Set() }
+      press = { mods: eventMods(event), fired: new Set() }
       keyPresses.set(id, press)
     }
 
     // O(1) lookup - try all key variants (key, code, codeKey)
-    const lookups = eventToKeyLookups(event)
-    /** @type {Command[] | undefined} */
-    let candidates
-    for (const l of lookups) {
-      candidates = lookup.keys.get(l)
-      if (candidates) break
-    }
+    const candidates = keyCandidates(event, eventMods(event))
     if (!candidates) return
 
     const context = getContext()
@@ -624,12 +696,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
                     tgt?.tagName === 'TEXTAREA' ||
                     (tgt instanceof HTMLElement && tgt.isContentEditable)
 
-    /** @type {Command[] | undefined} */
-    let candidates
-    for (const l of eventToKeyLookups(event, press.prefix, RELEASE_SUFFIX)) {
-      candidates = lookup.keys.get(l)
-      if (candidates) break
-    }
+    const candidates = keyCandidates(event, press.mods, RELEASE_SUFFIX)
     if (!candidates) return
     runRelease(candidates, press, event, overlayOpen(tgt), inInput)
   }
@@ -641,16 +708,15 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     // Don't fire keybinds while the command palette or settings panel is open
     if (overlayOpen(/** @type {Element | null} */ (event.target))) return
 
-    const lookupKey = eventToMouseLookup(event)
-    if (!lookupKey) return
+    if (!eventToMouseLookup(event)) return
 
     /** @type {Press} */
-    const press = { prefix: eventPrefix(event), fired: new Set() }
+    const press = { mods: eventMods(event), fired: new Set() }
     mousePresses.set(event.button, press)
     swallowAux.delete(event.button)
 
     // O(1) lookup
-    const candidates = lookup.mouse.get(lookupKey)
+    const candidates = mouseCandidates(event, press.mods)
     if (!candidates) return
 
     const context = getContext()
@@ -672,8 +738,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     mousePresses.delete(event.button)
 
     let consumed = false
-    const lookupKey = eventToMouseLookup(event, press.prefix, RELEASE_SUFFIX)
-    const candidates = lookupKey ? lookup.mouse.get(lookupKey) : undefined
+    const candidates = mouseCandidates(event, press.mods, RELEASE_SUFFIX)
     if (candidates) {
       const tgt = /** @type {Element | null} */ (event.target)
       consumed = runRelease(candidates, press, event, overlayOpen(tgt), false)
@@ -708,7 +773,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 
     const lookupKey = eventToWheelLookup(event)
     if (!lookupKey) return
-    const candidates = lookup.mouse.get(lookupKey)
+    const looseKey = /** @type {string} */ (eventToWheelLookup(event, ''))
+    const candidates = withLoose(lookup.mouse.get(lookupKey), lookup.looseMouse.get(looseKey), eventMods(event))
     if (!candidates) return
     const context = getContext()
     const active = candidates.filter((cmd) => isActive(cmd, context))
@@ -1082,7 +1148,7 @@ export function mergeBindings(schema, overrides) {
  *
  * @param {Schema} bindings - Binding definitions (from schema + overrides)
  * @param {Record<string, (ctx: Record<string, unknown>, event?: Event) => unknown>} handlers - Handler implementations
- * @param {Record<string, { when?: (ctx: Record<string, unknown>) => boolean, captureInput?: boolean }>} [options] - Per-command options
+ * @param {Record<string, { when?: (ctx: Record<string, unknown>) => boolean, captureInput?: boolean, anyModifiers?: boolean }>} [options] - Per-command options
  * @returns {Command[]}
  */
 export function fromBindings(bindings, handlers, options = {}) {
@@ -4599,11 +4665,14 @@ export class CommandHub extends EventTarget {
    * @returns {boolean}
    */
   mouseMatches(id, event) {
-    const lookup = eventToMouseLookup(event)
+    const cmd = this._live.get(id)
+    const lookup = eventToMouseLookup(event, cmd?.anyModifiers ? '' : eventPrefix(event))
     if (!lookup) return false
-    return (this._live.get(id)?.mouse ?? []).some((m) => {
+    return (cmd?.mouse ?? []).some((m) => {
       const parsed = parseMouse(m)
-      return !parsed.release && mouseToLookup(parsed) === lookup
+      if (parsed.release) return false
+      if (!cmd?.anyModifiers) return mouseToLookup(parsed) === lookup
+      return mouseToLookup({ ...parsed, mods: NO_MODS }) === lookup && holdsAll(parsed.mods, eventMods(event))
     })
   }
 

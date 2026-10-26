@@ -31,6 +31,7 @@ export type Command = {
     execute: (ctx: Record<string, unknown>, event?: Event) => unknown;
     hidden?: boolean | undefined;
     captureInput?: boolean | undefined;
+    anyModifiers?: boolean | undefined;
     menu?: string | string[] | undefined;
     rank?: number | undefined;
 };
@@ -52,6 +53,16 @@ export type ScoredCommand = Command & {
     active: boolean;
     score: number;
     positions?: number[];
+};
+export type LooseBinding = {
+    cmd: Command;
+    mods: Modifiers;
+};
+export type LookupTables = {
+    keys: Map<string, Command[]>;
+    mouse: Map<string, Command[]>;
+    looseKeys: Map<string, LooseBinding[]>;
+    looseMouse: Map<string, LooseBinding[]>;
 };
 export type KeybindsOptions = {
     target?: EventTarget;
@@ -79,6 +90,7 @@ export type KeybindsOptions = {
  *   execute: ctx => any  - action (return false to propagate)
  *   hidden?: bool        - hide from search
  *   captureInput?: bool  - fire even when in input fields
+ *   anyModifiers?: bool  - match whatever other modifiers are held (game movement, say)
  *
  * @example
  * const cleanup = keybinds([
@@ -239,12 +251,13 @@ export declare function mergeBindings(schema: Schema, overrides: BindingOverride
  *
  * @param {Schema} bindings - Binding definitions (from schema + overrides)
  * @param {Record<string, (ctx: Record<string, unknown>, event?: Event) => unknown>} handlers - Handler implementations
- * @param {Record<string, { when?: (ctx: Record<string, unknown>) => boolean, captureInput?: boolean }>} [options] - Per-command options
+ * @param {Record<string, { when?: (ctx: Record<string, unknown>) => boolean, captureInput?: boolean, anyModifiers?: boolean }>} [options] - Per-command options
  * @returns {Command[]}
  */
 export declare function fromBindings(bindings: Schema, handlers: Record<string, (ctx: Record<string, unknown>, event?: Event) => unknown>, options?: Record<string, {
     when?: (ctx: Record<string, unknown>) => boolean;
     captureInput?: boolean;
+    anyModifiers?: boolean;
 }>): Command[];
 /**
  * Get all bindings as a flat list (for settings UI)
@@ -470,6 +483,7 @@ export declare class CommandPalette extends HTMLElement {
         execute: (ctx: Record<string, unknown>, event?: Event | undefined) => unknown;
         hidden?: boolean | undefined;
         captureInput?: boolean | undefined;
+        anyModifiers?: boolean | undefined;
         menu?: string | string[] | undefined;
         rank?: number | undefined;
         active: boolean;

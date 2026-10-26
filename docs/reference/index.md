@@ -144,7 +144,7 @@ Create commands from bindings + handlers.
 function fromBindings(
   bindings: Schema,
   handlers: Record<string, (ctx, event?) => unknown>,
-  options?: Record<string, { when?: (ctx) => boolean, captureInput?: boolean }>
+  options?: Record<string, { when?: (ctx) => boolean, captureInput?: boolean, anyModifiers?: boolean }>
 ): Command[]
 ```
 
@@ -299,6 +299,7 @@ interface Command {
   execute: (ctx: Record<string, unknown>, event?: Event) => unknown
   hidden?: boolean
   captureInput?: boolean
+  anyModifiers?: boolean  // match whatever other modifiers are held
   menu?: string | string[]
 }
 

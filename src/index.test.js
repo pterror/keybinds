@@ -1469,6 +1469,84 @@ describe('side buttons', () => {
   })
 })
 
+describe('anyModifiers', () => {
+  test('a binding fires whatever other modifiers are held', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'w', label: 'W', keys: ['w'], anyModifiers: true, execute: fn }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'w', 'KeyW'))
+    target.dispatchEvent(kbd('keydown', 'W', 'KeyW', { shiftKey: true }))
+    target.dispatchEvent(kbd('keydown', 'w', 'KeyW', { ctrlKey: true, altKey: true }))
+    expect(fn).toHaveBeenCalledTimes(3)
+    cleanup()
+  })
+
+  test("a binding's own modifiers are still required", () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'x', label: 'X', keys: ['shift+x'], anyModifiers: true, execute: fn }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'x', 'KeyX'))
+    expect(fn).not.toHaveBeenCalled()
+    target.dispatchEvent(kbd('keydown', 'X', 'KeyX', { shiftKey: true, ctrlKey: true }))
+    expect(fn).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('an exact binding wins', () => {
+    const loose = mock(() => {})
+    const exact = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'loose', label: 'Loose', keys: ['x'], anyModifiers: true, execute: loose },
+      { id: 'exact', label: 'Exact', keys: ['shift+x'], execute: exact },
+    ], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'X', 'KeyX', { shiftKey: true }))
+    expect(exact).toHaveBeenCalledTimes(1)
+    expect(loose).not.toHaveBeenCalled()
+    target.dispatchEvent(kbd('keydown', 'x', 'KeyX', { ctrlKey: true }))
+    expect(loose).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('a hold started with a modifier down gets its release', () => {
+    /** @type {string[]} */
+    const calls = []
+    const target = document.createElement('div')
+    const cleanup = keybinds([{
+      id: 'fwd', label: 'Forward', keys: ['w', 'w:up'], anyModifiers: true,
+      execute: (/** @type {unknown} */ _, /** @type {Event | undefined} */ e) => { calls.push(/** @type {Event} */ (e).type) },
+    }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'W', 'KeyW', { shiftKey: true }))
+    target.dispatchEvent(kbd('keyup', 'w', 'KeyW'))
+    expect(calls).toEqual(['keydown', 'keyup'])
+    cleanup()
+  })
+
+  test('mouse buttons and scrolling too', () => {
+    const click = mock(() => {})
+    const scroll = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([
+      { id: 'c', label: 'C', mouse: ['Click'], anyModifiers: true, execute: click },
+      { id: 's', label: 'S', mouse: ['scrolldown'], anyModifiers: true, execute: scroll },
+    ], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 0, { shiftKey: true }))
+    target.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, ctrlKey: true, cancelable: true }))
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(scroll).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  test('without it, modifiers must match exactly as before', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'w', label: 'W', keys: ['w'], execute: fn }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'W', 'KeyW', { shiftKey: true }))
+    expect(fn).not.toHaveBeenCalled()
+    cleanup()
+  })
+})
+
 describe('press and release bindings', () => {
   test('key release fires on keyup after a press', () => {
     const up = mock(() => {})

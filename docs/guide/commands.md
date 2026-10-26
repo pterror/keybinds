@@ -16,6 +16,7 @@ interface Command {
   execute: (ctx) => any // Action to perform
   hidden?: bool        // Hide from search
   captureInput?: bool  // Fire even in input fields
+  anyModifiers?: bool  // Match whatever other modifiers are held
   menu?: string | string[]  // Context menu tag(s)
 }
 ```
@@ -70,6 +71,14 @@ mouse: ['MiddleClick', 'MiddleClick:up']
 - A release-only command checks its own `when` at release time. If a command's own press fired, its release fires regardless of `when`, so a hold can't be left open.
 - `execute` receives the `keyup` / `mouseup` event; check `event.type` to tell press from release.
 - Scroll bindings have no release.
+
+## Ignoring Other Modifiers
+
+By default a binding needs exactly its modifiers: `w` doesn't fire while Shift is held. A game moving on WASD wants the opposite, so a command with `anyModifiers: true` matches whatever else is held. A binding's own modifiers are still required (`shift+x` still needs Shift), and a command bound exactly to the keys pressed comes first.
+
+```js
+{ id: 'forward', label: 'Move forward', keys: ['w', 'w:up'], anyModifiers: true, execute: (ctx, e) => held(e.type === 'keydown') }
+```
 
 ## Scroll/Wheel Bindings
 
