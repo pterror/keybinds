@@ -40,6 +40,7 @@
  * @property {boolean | undefined} [hidden] - Hide from search
  * @property {boolean | undefined} [captureInput] - Fire even in input fields
  * @property {string | string[] | undefined} [menu] - Context menu tag(s)
+ * @property {number | undefined} [rank] - Where it's listed among matches, before relevance: higher first (default 0)
  */
 
 /**
@@ -801,10 +802,18 @@ export function matchCommands(commands, query, context, matcher) {
     results.push(scored)
   }
 
-  return results.sort((a, b) => {
-    if (a.active !== b.active) return (b.active ? 1 : 0) - (a.active ? 1 : 0)
-    return b.score - a.score
-  })
+  return results.sort(byRelevance)
+}
+
+/**
+ * Active first, then by rank, then by score.
+ * @param {ScoredCommand} a
+ * @param {ScoredCommand} b
+ */
+function byRelevance(a, b) {
+  if (a.active !== b.active) return (b.active ? 1 : 0) - (a.active ? 1 : 0)
+  if ((a.rank ?? 0) !== (b.rank ?? 0)) return (b.rank ?? 0) - (a.rank ?? 0)
+  return b.score - a.score
 }
 
 /**
@@ -823,10 +832,7 @@ export function searchCommands(commands, query, context = {}, options = {}) {
   for (const cmd of results) {
     cmd.score += scorer(cmd, context)
   }
-  return results.sort((a, b) => {
-    if (a.active !== b.active) return (b.active ? 1 : 0) - (a.active ? 1 : 0)
-    return b.score - a.score
-  })
+  return results.sort(byRelevance)
 }
 
 /**
@@ -1264,6 +1270,9 @@ export function fuzzyMatcher(query, text) {
 
   // Base score from match ratio
   score += Math.round((positions.length / t.length) * 10)
+  // The query as typed, whole, counts for more than its letters scattered: at a word's start most.
+  const whole = t.indexOf(q)
+  if (whole >= 0) score += whole === 0 || ' -_'.includes(/** @type {string} */ (t[whole - 1])) ? 20 : 10
 
   return { score, positions }
 }
@@ -1404,6 +1413,7 @@ export function findConflict(schema, bindingStr, type, excludeId) {
  *   open         - Show/hide the palette
  *   auto-trigger - Enable default $mod+K trigger
  *   placeholder  - Input placeholder text (default: "Type a command...")
+ *   hide-inactive - List only commands that apply now (otherwise the rest are shown disabled)
  *
  * Properties:
  *   commands: Command[]     - Array of command definitions
@@ -1622,9 +1632,8 @@ export class CommandPalette extends HTMLElement {
     if (ask) this._ask(query)
     const ids = new Set(this._commands.map(c => c.id))
     const all = query ? [...this._commands, ...this._sourced.filter(c => !ids.has(c.id))] : this._commands
-    this._results = query
-      ? searchCommands(all, query, this._context, { matcher: this._matcher })
-      : this._getAllVisible()
+    const found = query ? searchCommands(all, query, this._context, { matcher: this._matcher }) : this._getAllVisible()
+    this._results = this.hasAttribute('hide-inactive') ? found.filter(cmd => cmd.active) : found
     this._activeIndex = 0
     this._render()
     this._list.scrollTop = 0

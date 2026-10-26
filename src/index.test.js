@@ -2373,3 +2373,40 @@ describe('CommandHub', () => {
     host.remove()
   })
 })
+
+describe('ranking matches', () => {
+  test('the query typed whole counts for more than its letters scattered', () => {
+    const found = searchCommands([
+      { id: 'dl', label: 'Download this story', execute: () => {} },
+      { id: 'door', label: 'The red door', execute: () => {} },
+    ], 'door')
+    expect(found.map(c => c.id)).toEqual(['door', 'dl'])
+  })
+
+  test('rank comes before relevance, and after whether it applies', () => {
+    const found = searchCommands([
+      { id: 'new', label: 'New page “cave”', rank: -1, execute: () => {} },
+      { id: 'off', label: 'Cave', when: () => false, execute: () => {} },
+      { id: 'page', label: 'The caves below', execute: () => {} },
+    ], 'cave')
+    expect(found.map(c => c.id)).toEqual(['page', 'new', 'off'])
+  })
+
+  test('a palette told to hide inactive commands lists only those that apply', () => {
+    if (!customElements.get('keybinds-command-palette')) customElements.define('keybinds-command-palette', CommandPalette)
+    const el = /** @type {CommandPalette} */ (document.createElement('keybinds-command-palette'))
+    el.setAttribute('hide-inactive', '')
+    document.body.appendChild(el)
+    el.commands = [
+      { id: 'a', label: 'Delete this page', when: () => false, execute: () => {} },
+      { id: 'b', label: 'Delete this story', execute: () => {} },
+    ]
+    el.open = true
+    const input = /** @type {HTMLInputElement} */ (/** @type {ShadowRoot} */ (el.shadowRoot).querySelector('input'))
+    input.value = 'delete'
+    input.dispatchEvent(new (/** @type {any} */ (input.ownerDocument.defaultView).Event)('input'))
+    const labels = Array.from(/** @type {ShadowRoot} */ (el.shadowRoot).querySelectorAll('.palette__item-label')).map(l => l.textContent)
+    expect(labels).toEqual(['Delete this story'])
+    el.remove()
+  })
+})
