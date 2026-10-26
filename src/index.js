@@ -789,10 +789,12 @@ export function matchCommands(commands, query, context, matcher) {
   for (const cmd of dedupeCommands(commands)) {
     if (cmd.hidden) continue
 
+    // A description or category is found by the words as typed: letters scattered through a
+    // sentence match almost anything.
     const match = matcher(query, cmd.label)
       ?? matcher(query, cmd.id)
-      ?? (cmd.description ? matcher(query, cmd.description) : null)
-      ?? (cmd.category ? matcher(query, cmd.category) : null)
+      ?? (cmd.description ? simpleMatcher(query, cmd.description) : null)
+      ?? (cmd.category ? simpleMatcher(query, cmd.category) : null)
 
     if (!match) continue
 

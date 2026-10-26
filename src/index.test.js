@@ -2410,3 +2410,9 @@ describe('ranking matches', () => {
     el.remove()
   })
 })
+
+test('a description is found by the words as typed, not letters scattered through it', () => {
+  const cmds = [{ id: 'more', label: 'More…', description: 'What can be done with the link or words at the cursor', execute: () => {} }]
+  expect(searchCommands(cmds, 'door').length).toBe(0)
+  expect(searchCommands(cmds, 'the cursor').length).toBe(1)
+})
