@@ -540,7 +540,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   const keyPresses = new Map()
   /** @type {Map<number, Press>} */
   const mousePresses = new Map()
-  /** Side buttons whose press or release was consumed; their auxclick is cancelled too */
+  /** Side buttons whose press or release was consumed; their auxclick is canceled too */
   /** @type {Set<number>} */
   const swallowAux = new Set()
 
@@ -4493,7 +4493,7 @@ export class CommandHub extends EventTarget {
     this.dispatchEvent(new Event('refresh'))
   }
 
-  /** Push the current context into the components and command buttons, so unavailable commands grey out. */
+  /** Push the current context into the components and command buttons, so unavailable commands gray out. */
   syncContext() {
     const ctx = /** @type {Record<string, unknown>} */ (this.context())
     // The palette and menus take focus when they open, which changes the context (nothing is being

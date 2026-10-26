@@ -1033,7 +1033,7 @@ export declare class CommandHub<D extends {
     run(id: string, event?: Event): boolean;
     /** Re-read the sources, rebuild bindings and listeners, and update every component. */
     refresh(): void;
-    /** Push the current context into the components and command buttons, so unavailable commands grey out. */
+    /** Push the current context into the components and command buttons, so unavailable commands gray out. */
     syncContext(): void;
     openPalette(): void;
     /**

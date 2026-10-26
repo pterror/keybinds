@@ -1335,7 +1335,7 @@ describe('side buttons', () => {
     cleanup()
   })
 
-  test('mousedown, mouseup and auxclick are cancelled while the press fired', () => {
+  test('mousedown, mouseup and auxclick are canceled while the press fired', () => {
     const target = document.createElement('div')
     const cleanup = keybinds([{ id: 'b', label: 'B', mouse: ['Back'], execute: () => {} }], undefined, { target })
     const down = mouse('mousedown', 3)

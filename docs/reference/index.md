@@ -260,7 +260,7 @@ if (conflict) {
 | `get(id)`, `all()` | The definitions as given |
 | `keysFor(id)`, `mouseFor(id)` | Current bindings as shown to people |
 | `mouseMatches(id, event)` | Whether a mouse press is one of the command's bindings |
-| `bindButtons(root)` | Make `[data-command]` elements under `root` run and grey out; returns a stopper |
+| `bindButtons(root)` | Make `[data-command]` elements under `root` run and gray out; returns a stopper |
 | `openPalette()`, `openMenu(tag, x, y)` | Open the components |
 | `destroy()` | Stop listening |
 

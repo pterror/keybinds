@@ -54,7 +54,7 @@ mouse: ['Back']         // Side button toward the user (BackClick also works)
 mouse: ['Forward']      // Side button away from the user (ForwardClick also works)
 ```
 
-While a command's press on Back or Forward fires, the browser's history navigation for that press is cancelled (mousedown, mouseup and auxclick).
+While a command's press on Back or Forward fires, the browser's history navigation for that press is canceled (mousedown, mouseup and auxclick).
 
 ## Press and Release Bindings
 
@@ -201,7 +201,7 @@ hub.refresh()               // call again whenever the sources' commands change
 hub.palette.open = true     // or hub.openPalette()
 hub.settings.open = true    // rebinding: changes take effect immediately
 hub.keysFor('save')         // ["Ctrl+S"], after any rebinding
-hub.syncContext()           // when state changes, so unavailable commands grey out
+hub.syncContext()           // when state changes, so unavailable commands gray out
 ```
 
 ### Command Buttons

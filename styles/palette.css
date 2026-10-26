@@ -8,7 +8,7 @@
  * Components are selected by the data-keybinds attribute they set on themselves, so this works
  * whatever tag names they're registered under.
  *
- * Every colour and font comes from a custom property, so a page restyles all of it by setting
+ * Every color and font comes from a custom property, so a page restyles all of it by setting
  * these (on :root or on a component):
  *
  *   --keybinds-bg          dialog background       (default: the browser's Canvas)

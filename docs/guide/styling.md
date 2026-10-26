@@ -10,11 +10,11 @@ Import the optional stylesheet, which styles every component (palette, cheatshee
 import 'keybinds/styles/palette.css'
 ```
 
-Its colours follow the page's `color-scheme`: with `:root { color-scheme: light dark }` it's light or dark along with the system.
+Its colors follow the page's `color-scheme`: with `:root { color-scheme: light dark }` it's light or dark along with the system.
 
 ## Theme Variables
 
-Every colour and font in the stylesheet comes from a custom property. Set them on `:root` (or on one component) to match your page:
+Every color and font in the stylesheet comes from a custom property. Set them on `:root` (or on one component) to match your page:
 
 ```css
 :root {
