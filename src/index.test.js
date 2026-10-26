@@ -1469,6 +1469,62 @@ describe('side buttons', () => {
   })
 })
 
+describe('held', () => {
+  test('a command is held from its press until its key comes up', () => {
+    const target = document.createElement('div')
+    const kb = keybinds([{ id: 'fwd', label: 'Forward', keys: ['w'], execute: () => {} }], undefined, { target })
+    expect(kb.held('fwd')).toBe(false)
+    target.dispatchEvent(kbd('keydown', 'w', 'KeyW'))
+    expect(kb.held('fwd')).toBe(true)
+    target.dispatchEvent(kbd('keydown', 'w', 'KeyW', { repeat: true }))
+    expect(kb.held('fwd')).toBe(true)
+    target.dispatchEvent(kbd('keyup', 'w', 'KeyW'))
+    expect(kb.held('fwd')).toBe(false)
+    kb()
+  })
+
+  test("a press that didn't fire (inactive, or passed on) isn't held", () => {
+    const target = document.createElement('div')
+    const kb = keybinds([
+      { id: 'off', label: 'Off', keys: ['a'], when: () => false, execute: () => {} },
+      { id: 'pass', label: 'Pass', keys: ['b'], execute: () => false },
+    ], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'a', 'KeyA'))
+    target.dispatchEvent(kbd('keydown', 'b', 'KeyB'))
+    expect(kb.held('off')).toBe(false)
+    expect(kb.held('pass')).toBe(false)
+    kb()
+  })
+
+  test('mouse buttons, and losing focus', () => {
+    const target = document.createElement('div')
+    const kb = keybinds([
+      { id: 'fire', label: 'Fire', mouse: ['Click'], execute: () => {} },
+      { id: 'fwd', label: 'Forward', keys: ['w'], execute: () => {} },
+    ], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 0, { buttons: 1 }))
+    target.dispatchEvent(kbd('keydown', 'w', 'KeyW'))
+    expect(kb.held('fire')).toBe(true)
+    window.dispatchEvent(new Event('blur'))
+    expect(kb.held('fwd')).toBe(false)
+    expect(kb.held('fire')).toBe(true)
+    target.dispatchEvent(mouse('mouseup', 0, { buttons: 0 }))
+    expect(kb.held('fire')).toBe(false)
+    kb()
+  })
+
+  test('the hub answers too', () => {
+    const target = document.createElement('div')
+    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    hub.setSource('a', () => [{ id: 'fwd', label: 'Forward', keys: ['w'], execute: () => {} }])
+    hub.refresh()
+    target.dispatchEvent(kbd('keydown', 'w', 'KeyW'))
+    expect(hub.held('fwd')).toBe(true)
+    hub.destroy()
+    expect(hub.held('fwd')).toBe(false)
+  })
+})
+
 describe('releases that never arrive', () => {
   /** @param {string[]} calls */
   const recorder = (calls) => (/** @type {unknown} */ _, /** @type {Event | undefined} */ e) => { calls.push(/** @type {Event} */ (e).type) }

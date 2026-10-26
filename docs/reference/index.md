@@ -14,7 +14,7 @@ function keybinds(
     capture?: boolean,
     wheel?: { step?: number, idle?: number },
   }
-): () => void
+): (() => void) & { held(id: string): boolean }
 ```
 
 | Option | Default | Description |
@@ -25,12 +25,13 @@ function keybinds(
 | `wheel.step` | `50` | Pixels of scrolling per step of a scroll binding (about one mouse-wheel notch) |
 | `wheel.idle` | `200` | Milliseconds without scrolling that end a gesture |
 
-**Returns:** Cleanup function to remove listeners.
+**Returns:** Cleanup function to remove listeners. It also has `held(id)`: whether a command is held right now (its press fired, and that key or button hasn't come up), for controls read every frame rather than per event.
 
 ```js
-const cleanup = keybinds(commands, () => ({ editing: false }))
+const kb = keybinds(commands, () => ({ editing: false }))
+if (kb.held('forward')) walk()
 // Later:
-cleanup()
+kb()
 ```
 
 ---

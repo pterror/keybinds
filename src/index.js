@@ -548,7 +548,7 @@ function wheelDistance(event) {
  *   hasSelection: selectedId() !== null,
  *   isEditing: editingId() !== null
  * }))
- * @returns {() => void} Cleanup function
+ * @returns {(() => void) & { held: (id: string) => boolean }} Cleanup function, with `held(id)`: whether a command is held right now
  */
 export function keybinds(commands, getContext = () => ({}), options = {}) {
   const { target = window, onExecute, capture = false } = options
@@ -706,9 +706,9 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   // every held key is released when focus goes. Coming back with it still down, its
   // auto-repeat starts a new press.
   function handleBlur() {
-    const held = [...keyPresses.values()]
+    const presses = [...keyPresses.values()]
     keyPresses.clear()
-    for (const press of held) {
+    for (const press of presses) {
       const event = new KeyboardEvent('keyup', { key: press.key ?? '', code: press.code ?? '', cancelable: true })
       const candidates = keyCandidates(event, press.mods, RELEASE_SUFFIX)
       if (candidates) runRelease(candidates, press, event, false, false)
@@ -853,8 +853,20 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   const focusTarget = typeof window !== 'undefined' ? window : target
   focusTarget.addEventListener('blur', handleBlur)
 
-  // Return cleanup function
-  return () => {
+  /**
+   * Whether a command is held right now: its press fired and that key or button hasn't come up.
+   * For controls read every frame (a game's movement, say) rather than acted on per event.
+   * @param {string} id
+   */
+  function held(id) {
+    for (const press of [...keyPresses.values(), ...mousePresses.values()]) {
+      for (const cmd of press.fired) if (cmd.id === id) return true
+    }
+    return false
+  }
+
+  // Return cleanup function, which can also be asked what's held
+  return Object.assign(() => {
     target.removeEventListener('keydown', handleKeyDown, opts)
     target.removeEventListener('keyup', handleKeyUp, opts)
     target.removeEventListener('mousedown', handleMouseDown, opts)
@@ -867,7 +879,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     keyPresses.clear()
     mousePresses.clear()
     swallowAux.clear()
-  }
+  }, { held })
 }
 
 /**
@@ -4496,7 +4508,7 @@ export class CommandHub extends EventTarget {
     /** @type {BindingsStore<Schema> | null} */
     this._store = null
     this._storeListener = () => this.refresh()
-    /** @type {(() => void) | null} */
+    /** @type {ReturnType<typeof keybinds> | null} */
     this._unbind = null
     this._scope = 'global'
     /** @type {Set<Element>} */
@@ -4572,6 +4584,14 @@ export class CommandHub extends EventTarget {
   /** The store of people's rebindings, as the settings panel edits it. */
   get store() {
     return this._store
+  }
+
+  /**
+   * Whether a command is held right now: its press fired and that key or button hasn't come up.
+   * @param {string} id
+   */
+  held(id) {
+    return this._unbind?.held(id) ?? false
   }
 
   /** @returns {D[]} */

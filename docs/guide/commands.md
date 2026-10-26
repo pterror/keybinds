@@ -73,6 +73,18 @@ mouse: ['MiddleClick', 'MiddleClick:up']
 - Scroll bindings have no release.
 - A release that never arrives is stood in for. A key let go after the window lost focus sends its keyup elsewhere, so held keys are released when focus goes. A mouse button can be let go out of sight too, but every mouse event says which buttons are down, so a held button that no longer is gets its release on the next mouse event (not at blur, since it may well still be held).
 
+## Held Controls
+
+A game reads its movement every frame instead of reacting to each key event. `keybinds()` returns its cleanup function with a `held(id)` on it, true from the moment a command's press fires until that key or button comes up (or the window loses focus, for keys):
+
+```js
+const kb = keybinds([{ id: 'forward', label: 'Move forward', keys: ['w'], anyModifiers: true, execute: () => {} }])
+function frame() {
+  if (kb.held('forward')) player.walk()
+  requestAnimationFrame(frame)
+}
+```
+
 ## Ignoring Other Modifiers
 
 By default a binding needs exactly its modifiers: `w` doesn't fire while Shift is held. A game moving on WASD wants the opposite, so a command with `anyModifiers: true` matches whatever else is held. A binding's own modifiers are still required (`shift+x` still needs Shift), and a command bound exactly to the keys pressed comes first.
@@ -222,6 +234,7 @@ hub.refresh()               // call again whenever the sources' commands change
 hub.palette.open = true     // or hub.openPalette()
 hub.settings.open = true    // rebinding: changes take effect immediately
 hub.keysFor('save')         // ["Ctrl+S"], after any rebinding
+hub.held('forward')         // whether that command is held down right now
 hub.syncContext()           // when state changes, so unavailable commands gray out
 ```
 

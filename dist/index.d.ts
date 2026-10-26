@@ -113,9 +113,11 @@ export type KeybindsOptions = {
  *   hasSelection: selectedId() !== null,
  *   isEditing: editingId() !== null
  * }))
- * @returns {() => void} Cleanup function
+ * @returns {(() => void) & { held: (id: string) => boolean }} Cleanup function, with `held(id)`: whether a command is held right now
  */
-export declare function keybinds(commands: Command[], getContext?: () => Record<string, unknown>, options?: KeybindsOptions): () => void;
+export declare function keybinds(commands: Command[], getContext?: () => Record<string, unknown>, options?: KeybindsOptions): (() => void) & {
+    held: (id: string) => boolean;
+};
 /**
  * Search commands with a given matcher
  *
@@ -1065,6 +1067,11 @@ export declare class CommandHub<D extends {
     setScope(scope: string): void;
     /** The store of people's rebindings, as the settings panel edits it. */
     get store(): BindingsStore<Schema> | null;
+    /**
+     * Whether a command is held right now: its press fired and that key or button hasn't come up.
+     * @param {string} id
+     */
+    held(id: string): boolean;
     /** @returns {D[]} */
     all(): D[];
     /**
