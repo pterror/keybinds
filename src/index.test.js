@@ -1469,6 +1469,63 @@ describe('side buttons', () => {
   })
 })
 
+describe('releases that never arrive', () => {
+  /** @param {string[]} calls */
+  const recorder = (calls) => (/** @type {unknown} */ _, /** @type {Event | undefined} */ e) => { calls.push(/** @type {Event} */ (e).type) }
+
+  test('held keys are released when the window loses focus', () => {
+    /** @type {string[]} */
+    const calls = []
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'k', label: 'K', keys: ['k', 'k:up'], execute: recorder(calls) }], undefined, { target })
+    target.dispatchEvent(kbd('keydown', 'k', 'KeyK'))
+    window.dispatchEvent(new Event('blur'))
+    expect(calls).toEqual(['keydown', 'keyup'])
+    // the real keyup, if it does come, has nothing left to release
+    target.dispatchEvent(kbd('keyup', 'k', 'KeyK'))
+    expect(calls).toEqual(['keydown', 'keyup'])
+    cleanup()
+  })
+
+  test('a mouse button is not released just because focus went', () => {
+    /** @type {string[]} */
+    const calls = []
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'm', label: 'M', mouse: ['MiddleClick', 'MiddleClick:up'], execute: recorder(calls) }], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 1, { buttons: 4 }))
+    window.dispatchEvent(new Event('blur'))
+    // still held when the page hears from the mouse again
+    target.dispatchEvent(mouse('mousemove', 0, { buttons: 4 }))
+    expect(calls).toEqual(['mousedown'])
+    target.dispatchEvent(mouse('mouseup', 1, { buttons: 0 }))
+    expect(calls).toEqual(['mousedown', 'mouseup'])
+    cleanup()
+  })
+
+  test('a mouse button let go out of sight is released on the next mouse event', () => {
+    /** @type {string[]} */
+    const calls = []
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'm', label: 'M', mouse: ['MiddleClick', 'MiddleClick:up'], execute: recorder(calls) }], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 1, { buttons: 4 }))
+    target.dispatchEvent(mouse('mousemove', 0, { buttons: 0 }))
+    expect(calls).toEqual(['mousedown', 'mouseup'])
+    cleanup()
+  })
+
+  test('another button going down doesn\'t release one that is still held', () => {
+    /** @type {string[]} */
+    const calls = []
+    const target = document.createElement('div')
+    const cleanup = keybinds([{ id: 'm', label: 'M', mouse: ['MiddleClick', 'MiddleClick:up'], execute: recorder(calls) }], undefined, { target })
+    target.dispatchEvent(mouse('mousedown', 1, { buttons: 4 }))
+    target.dispatchEvent(mouse('mousedown', 0, { buttons: 5 }))
+    target.dispatchEvent(mouse('mouseup', 0, { buttons: 4 }))
+    expect(calls).toEqual(['mousedown'])
+    cleanup()
+  })
+})
+
 describe('anyModifiers', () => {
   test('a binding fires whatever other modifiers are held', () => {
     const fn = mock(() => {})

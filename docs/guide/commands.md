@@ -71,6 +71,7 @@ mouse: ['MiddleClick', 'MiddleClick:up']
 - A release-only command checks its own `when` at release time. If a command's own press fired, its release fires regardless of `when`, so a hold can't be left open.
 - `execute` receives the `keyup` / `mouseup` event; check `event.type` to tell press from release.
 - Scroll bindings have no release.
+- A release that never arrives is stood in for. A key let go after the window lost focus sends its keyup elsewhere, so held keys are released when focus goes. A mouse button can be let go out of sight too, but every mouse event says which buttons are down, so a held button that no longer is gets its release on the next mouse event (not at blur, since it may well still be held).
 
 ## Ignoring Other Modifiers
 

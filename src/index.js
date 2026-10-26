@@ -578,7 +578,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   /**
    * A held input. `mods` is the modifier state at press time, which release
    * bindings match against; `fired` holds the commands whose press executed.
-   * @typedef {{ mods: Modifiers, fired: Set<Command> }} Press
+   * `key` and `code` are kept for keys, to stand in a release that never arrives.
+   * @typedef {{ mods: Modifiers, fired: Set<Command>, key?: string, code?: string }} Press
    */
 
   /**
@@ -664,7 +665,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     const id = event.code || event.key
     let press = keyPresses.get(id)
     if (!press || !event.repeat) {
-      press = { mods: eventMods(event), fired: new Set() }
+      press = { mods: eventMods(event), fired: new Set(), key: event.key, code: event.code }
       keyPresses.set(id, press)
     }
 
@@ -701,9 +702,48 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     runRelease(candidates, press, event, overlayOpen(tgt), inInput)
   }
 
+  // A key let go after the window lost focus sends its keyup to whatever has focus now, so
+  // every held key is released when focus goes. Coming back with it still down, its
+  // auto-repeat starts a new press.
+  function handleBlur() {
+    const held = [...keyPresses.values()]
+    keyPresses.clear()
+    for (const press of held) {
+      const event = new KeyboardEvent('keyup', { key: press.key ?? '', code: press.code ?? '', cancelable: true })
+      const candidates = keyCandidates(event, press.mods, RELEASE_SUFFIX)
+      if (candidates) runRelease(candidates, press, event, false, false)
+    }
+  }
+
+  /** `MouseEvent.buttons` bit for a `MouseEvent.button` */
+  const BUTTON_BITS = [1, 4, 2, 8, 16]
+
+  /**
+   * Mouse buttons can be let go where the page doesn't see it (over another window after focus
+   * moved, say), but every mouse event says which buttons are down. Any held button that isn't
+   * gets its release now, rather than guessing at blur whether it will come back.
+   * @param {MouseEvent} event
+   */
+  function reconcileButtons(event) {
+    for (const [button, press] of mousePresses) {
+      if (event.buttons & (BUTTON_BITS[button] ?? 0)) continue
+      if (event.type === 'mouseup' && event.button === button) continue
+      mousePresses.delete(button)
+      const release = new MouseEvent('mouseup', { button, cancelable: true })
+      const candidates = mouseCandidates(release, press.mods, RELEASE_SUFFIX)
+      if (candidates) runRelease(candidates, press, release, false, false)
+    }
+  }
+
+  /** @param {Event} e */
+  function handleMouseMove(e) {
+    if (mousePresses.size > 0) reconcileButtons(/** @type {MouseEvent} */ (e))
+  }
+
   /** @param {Event} e */
   function handleMouseDown(e) {
     const event = /** @type {MouseEvent} */ (e)
+    reconcileButtons(event)
 
     // Don't fire keybinds while the command palette or settings panel is open
     if (overlayOpen(/** @type {Element | null} */ (event.target))) return
@@ -733,6 +773,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   /** @param {Event} e */
   function handleMouseUp(e) {
     const event = /** @type {MouseEvent} */ (e)
+    reconcileButtons(event)
     const press = mousePresses.get(event.button)
     if (!press) return
     mousePresses.delete(event.button)
@@ -807,6 +848,10 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   target.addEventListener('mouseup', handleMouseUp, opts)
   target.addEventListener('auxclick', handleAuxClick, opts)
   target.addEventListener('wheel', handleWheel, { capture, passive: false })
+  target.addEventListener('mousemove', handleMouseMove, opts)
+  // Focus is the window's, whatever element the bindings listen on
+  const focusTarget = typeof window !== 'undefined' ? window : target
+  focusTarget.addEventListener('blur', handleBlur)
 
   // Return cleanup function
   return () => {
@@ -816,6 +861,8 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     target.removeEventListener('mouseup', handleMouseUp, opts)
     target.removeEventListener('auxclick', handleAuxClick, opts)
     target.removeEventListener('wheel', handleWheel, opts)
+    target.removeEventListener('mousemove', handleMouseMove, opts)
+    focusTarget.removeEventListener('blur', handleBlur)
     gestures.clear()
     keyPresses.clear()
     mousePresses.clear()
