@@ -15,6 +15,7 @@ export type KeySyntax = {
     accepts?: (key: string) => boolean;
     shifted?: (key: string) => string | undefined;
     lookups?: (key: string, prefix: string, suffix: string) => string[];
+    glyph?: (name: string) => string | undefined;
 };
 /** @typedef {import('./core.js').Modifiers} Modifiers */
 /** @typedef {import('./core.js').Input} Input */
@@ -31,6 +32,7 @@ export type KeySyntax = {
  * @property {(key: string) => boolean} [accepts] - Keys it makes bindable
  * @property {(key: string) => string | undefined} [shifted] - What a binding with Shift means instead
  * @property {(key: string, prefix: string, suffix: string) => string[]} [lookups] - More lookups for a key event
+ * @property {(name: string) => string | undefined} [glyph] - How a key is shown, for display pieces like layout()
  */
 export declare const NAMED_KEY: RegExp;
 /**

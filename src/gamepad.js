@@ -3,7 +3,7 @@
  * Showing and recording them is keybinds/gamepad-ui.
  */
 
-import { RELEASE_SUFFIX, NO_MODS, anyOverlayOpen } from './core.js'
+import { NO_MODS, anyOverlayOpen } from './core.js'
 
 /** @typedef {import('./core.js').Input} Input */
 /** @typedef {import('./core.js').Press} Press */
@@ -66,19 +66,11 @@ export function gamepad() {
         const name = GAMEPAD_BUTTONS[button]
         const event = new CustomEvent(down ? 'gamepadbuttondown' : 'gamepadbuttonup', { cancelable: true, detail: { gamepad: pad, button: name } })
         if (!down) {
-          const press = d.presses.get(id)
-          if (!press) return
-          d.presses.delete(id)
-          const found = d.releases ? d.candidates([`${name}${RELEASE_SUFFIX}`], [], NO_MODS) : undefined
-          if (found) d.release(found, press, event, { blocked: anyOverlayOpen() })
+          d.up(id, event, { blocked: anyOverlayOpen() })
           return
         }
-        /** @type {Press} */
-        const press = { mods: NO_MODS, fired: new Set() }
-        d.presses.set(id, press)
-        if (anyOverlayOpen()) return
-        const found = d.candidates([`${name}`], [], NO_MODS)
-        if (found) d.fire(found, event, { press })
+        // Gamepad buttons have no modifiers, so a binding's lookup is its loose lookup too
+        d.down(id, event, { mods: NO_MODS, lookups: (suffix) => [[`${name}${suffix}`], [`${name}${suffix}`]], blocked: anyOverlayOpen() })
       }
 
       function poll() {

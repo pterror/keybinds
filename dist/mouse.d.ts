@@ -14,11 +14,11 @@ export type ParsedMouse = {
  * Parse a mouse binding like "$mod+Click" or "MiddleClick", without its release suffix
  * Supported: Click/LeftClick, RightClick, MiddleClick, BackClick, ForwardClick, Scroll{Up,Down,Left,Right}
  * @param {string} binding
- * @param {boolean} [release] - Whether it had a release suffix; scrolling has no release
+ * @param {string} [suffix] - Its suffix (":up", ":hold"), if any; scrolling has none
  * @returns {ParsedMouse}
  * @throws {Error} if mouse binding is invalid
  */
-export declare function parseMouse(binding: string, release?: boolean): ParsedMouse;
+export declare function parseMouse(binding: string, suffix?: string): ParsedMouse;
 /**
  * Binding name for a MouseEvent.button value, null for buttons with no name
  * @param {number} button

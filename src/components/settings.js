@@ -1,4 +1,4 @@
-import { markKind, findConflict, flipRelease, splitRelease, parseBinding } from '../core.js'
+import { markKind, findConflict, flipRelease, splitRelease, bindingLookup, formatBinding } from '../core.js'
 import { keysUI } from '../keys-ui.js'
 
 /** @typedef {import('../core.js').InputUI} Input */
@@ -339,10 +339,10 @@ export class KeybindSettings extends HTMLElement {
 
     // Remove conflicting binding from the other command
     const conflictBindings = this._getBindings(conflictCmdId)
-    const lookup = parseBinding(input, bindingStr, true).lookup
+    const lookup = bindingLookup(input, bindingStr)
     conflictBindings[input.field] = (conflictBindings[input.field] ?? []).filter((b) => {
       try {
-        return parseBinding(input, b, true).lookup !== lookup
+        return bindingLookup(input, b) !== lookup
       } catch { return true }
     })
     this._saveBindings(conflictCmdId, conflictBindings)
@@ -557,7 +557,7 @@ export class KeybindSettings extends HTMLElement {
     keysContainer.className = 'settings__binding-keys'
     keysContainer.setAttribute('part', 'binding-keys')
 
-    for (const part of input.format(bindingStr)) {
+    for (const part of formatBinding(input, bindingStr)) {
       const kbd = document.createElement('kbd')
       kbd.className = 'settings__binding-key'
       kbd.setAttribute('part', 'binding-key')

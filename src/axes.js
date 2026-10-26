@@ -92,8 +92,8 @@ export function axes(...syntax) {
   return {
     field: 'axes',
     axis: true,
-    parse(binding, release) {
-      if (release) throw new Error(`Axes have no release: "${binding}"`)
+    parse(binding, suffix) {
+      if (suffix) throw new Error(`Axes have no "${suffix}": "${binding}${suffix}"`)
       return { lookup: axisToLookup(parseAxis(binding, syntax)), loose: '', mods: NO_MODS }
     },
     listen(d) {

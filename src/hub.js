@@ -2,7 +2,7 @@
  * CommandHub: every command on the page, from every source, with one store of people's rebindings.
  */
 
-import { keybinds, isActive, validateCommands } from './core.js'
+import { keybinds, isActive, validateCommands, formatBinding } from './core.js'
 import { BindingsStore, localStorageBindings } from './store.js'
 import { createComponent } from './components/create.js'
 
@@ -28,9 +28,11 @@ import { createComponent } from './components/create.js'
  * @property {string} [storageKey] - localStorage key for people's rebindings (default "keybinds"); the scope is appended
  * @property {(scope: string) => BindingsStorage} [storage] - Keep rebindings somewhere other than
  *   localStorage, separately per scope. Takes the place of `storageKey`
- * @property {import('./core.js').Releases} [releases] - From releases(), for release bindings ("k:up")
+ * @property {import('./core.js').Phase} [releases] - From releases(), for release bindings ("k:up")
+ * @property {import('./core.js').Phase} [holds] - From holds(), for "k:hold" and "k:tap"
+ * @property {import('./core.js').Sequences} [sequences] - From sequences(), for bindings of several steps ("g i")
  * @property {import('./core.js').AnyModifiers} [anyModifiers] - From anyModifiers(), for commands with `anyModifiers`
- * @property {Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'anyModifiers'>} [listen] - Passed on to keybinds(): target, capture, onExecute
+ * @property {Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'holds' | 'sequences' | 'anyModifiers'>} [listen] - Passed on to keybinds(): target, capture, onExecute
  */
 
 /**
@@ -81,8 +83,9 @@ export class CommandHub extends EventTarget {
     /** What keybinds() is given besides the commands and axes */
     /** @type {KeybindsOptions} */
     this._options = { ...options.listen, inputs: this.inputs }
-    if (options.releases) this._options.releases = options.releases
-    if (options.anyModifiers) this._options.anyModifiers = options.anyModifiers
+    for (const k of /** @type {const} */ (['releases', 'holds', 'sequences', 'anyModifiers'])) {
+      if (options[k]) Object.assign(this._options, { [k]: options[k] })
+    }
     /** @type {(def: D) => Command} */
     this._adapt = options.adapt ?? ((def) => /** @type {Command} */ (/** @type {unknown} */ (def)))
     /** @type {{ owner: string, get: () => D[] }[]} */
@@ -309,7 +312,7 @@ export class CommandHub extends EventTarget {
     for (const a of this._axes.values()) {
       const def = { ...a, axes: bound[a.id]?.['axes'] ?? a.axes }
       try {
-        if (axisInput) def.axes.forEach((b) => axisInput.parse(b, false))
+        if (axisInput) def.axes.forEach((b) => axisInput.parse(b, ''))
       } catch (e) {
         console.error(`keybinds: dropping the sources of axis "${a.id}"`, e)
         def.axes = []
@@ -374,8 +377,8 @@ export class CommandHub extends EventTarget {
     // A command's are what it's listening with (an unreadable binding was dropped); an axis's are in the store
     const source = input.axis ? this._store?.get()[id] : this._live.get(id)
     const list = /** @type {string[] | undefined} */ (/** @type {Record<string, unknown> | undefined} */ (source)?.[field])
-    const format = 'format' in input ? /** @type {import('./core.js').InputUI} */ (input).format : null
-    return (list ?? []).map((b) => format ? format(b).join(input.axis ? ' ' : '+') : b)
+    const ui = 'format' in input ? /** @type {import('./core.js').InputUI} */ (input) : null
+    return (list ?? []).map((b) => ui ? formatBinding(ui, b).join(input.axis ? ' ' : '+').replaceAll('+then+', ' then ') : b)
   }
 
   /**

@@ -4,7 +4,7 @@
  */
 
 import {
-  RELEASE_SUFFIX, NO_MODS, parseMods, modsToPrefix, eventMods, holdsAll, overlayOpen,
+  NO_MODS, parseMods, modsToPrefix, eventMods, holdsAll, overlayOpen, splitBinding,
 } from './core.js'
 
 /** @typedef {import('./core.js').Modifiers} Modifiers */
@@ -38,11 +38,11 @@ const BUTTON_BITS = [1, 4, 2, 8, 16]
  * Parse a mouse binding like "$mod+Click" or "MiddleClick", without its release suffix
  * Supported: Click/LeftClick, RightClick, MiddleClick, BackClick, ForwardClick, Scroll{Up,Down,Left,Right}
  * @param {string} binding
- * @param {boolean} [release] - Whether it had a release suffix; scrolling has no release
+ * @param {string} [suffix] - Its suffix (":up", ":hold"), if any; scrolling has none
  * @returns {ParsedMouse}
  * @throws {Error} if mouse binding is invalid
  */
-export function parseMouse(binding, release = false) {
+export function parseMouse(binding, suffix = '') {
   if (!binding || typeof binding !== 'string') {
     throw new Error(`Invalid mouse binding: ${binding}`)
   }
@@ -66,8 +66,8 @@ export function parseMouse(binding, release = false) {
     throw new Error(`Unknown mouse button "${btn}" in binding "${binding}". Valid: Click, RightClick, MiddleClick, BackClick, ForwardClick, ScrollUp, ScrollDown, ScrollLeft, ScrollRight`)
   }
 
-  if (release && btn.startsWith('scroll')) {
-    throw new Error(`Scroll has no release: "${binding}"`)
+  if (suffix && btn.startsWith('scroll')) {
+    throw new Error(`Scroll has no "${suffix}": "${binding}${suffix}"`)
   }
 
   let button = 0 // left
@@ -161,7 +161,8 @@ export function mouseMatches(cmd, event) {
   const lookup = eventToMouseLookup(event, cmd.anyModifiers ? '' : modsToPrefix(eventMods(event)))
   if (!lookup) return false
   return (cmd.mouse ?? []).some((m) => {
-    if (m.trim().toLowerCase().endsWith(RELEASE_SUFFIX)) return false
+    const { steps, suffix } = splitBinding(m)
+    if (suffix || steps.length > 1) return false
     const parsed = parseMouse(m)
     if (!cmd.anyModifiers) return mouseToLookup(parsed) === lookup
     return mouseToLookup({ ...parsed, mods: NO_MODS }) === lookup && holdsAll(parsed.mods, eventMods(event))
@@ -179,23 +180,22 @@ export function mouse(options = {}) {
   const { step: WHEEL_STEP = 50, idle: WHEEL_IDLE = 200 } = options.wheel ?? {}
   return {
     field: 'mouse',
-    parse(binding, release) {
-      const parsed = parseMouse(binding, release)
+    parse(binding, suffix) {
+      const parsed = parseMouse(binding, suffix)
       return { lookup: mouseToLookup(parsed), loose: mouseToLookup({ ...parsed, mods: NO_MODS }), mods: parsed.mods }
     },
     matches: (cmd, event) => mouseMatches(cmd, /** @type {MouseEvent} */ (event)),
 
     listen(d) {
       /**
-       * Commands a mouse event triggers, with the modifiers given (the press's, for a release)
+       * The lookups of a mouse event
        * @param {MouseEvent} event
-       * @param {Modifiers} mods
-       * @param {string} [suffix]
+       * @returns {import('./core.js').Lookups}
        */
-      const candidates = (event, mods, suffix = '') => {
+      const lookupsOf = (event) => (suffix, mods) => {
         const exact = eventToMouseLookup(event, modsToPrefix(mods), suffix)
         const loose = eventToMouseLookup(event, '', suffix)
-        return d.candidates(exact ? [exact] : [], loose ? [loose] : [], mods)
+        return [exact ? [exact] : [], loose ? [loose] : []]
       }
       /** Side buttons whose press or release was consumed; their auxclick is canceled too */
       /** @type {Set<number>} */
@@ -208,15 +208,11 @@ export function mouse(options = {}) {
        * @param {MouseEvent} event
        */
       function reconcile(event) {
-        for (const [id, press] of d.presses) {
+        for (const id of [...d.presses.keys()]) {
           const button = Number(id)
           if (event.buttons & (BUTTON_BITS[button] ?? 0)) continue
           if (event.type === 'mouseup' && event.button === button) continue
-          d.presses.delete(id)
-          if (!d.releases) continue
-          const release = new MouseEvent('mouseup', { button, cancelable: true })
-          const found = candidates(release, press.mods, RELEASE_SUFFIX)
-          if (found) d.release(found, press, release)
+          d.up(id, new MouseEvent('mouseup', { button, cancelable: true }))
         }
       }
 
@@ -227,29 +223,18 @@ export function mouse(options = {}) {
         // Don't fire keybinds while the command palette or settings panel is open
         if (overlayOpen(/** @type {Element | null} */ (event.target))) return
         if (!pointerButtonName(event.button)) return
-
-        /** @type {Press} */
-        const press = { mods: eventMods(event), fired: new Set() }
-        d.presses.set(String(event.button), press)
         swallowAux.delete(event.button)
-
-        const found = candidates(event, press.mods)
-        if (found && d.fire(found, event, { press }) && isSideButton(event.button)) swallowAux.add(event.button)
+        const press = d.down(String(event.button), event, { mods: eventMods(event), lookups: lookupsOf(event) })
+        if (press.fired.size > 0 && isSideButton(event.button)) swallowAux.add(event.button)
       }
 
       /** @param {Event} e */
       function onUp(e) {
         const event = /** @type {MouseEvent} */ (e)
         reconcile(event)
-        const press = d.presses.get(String(event.button))
-        if (!press) return
-        d.presses.delete(String(event.button))
-
-        const found = d.releases ? candidates(event, press.mods, RELEASE_SUFFIX) : undefined
-        const consumed = !!found && d.release(found, press, event, { blocked: overlayOpen(/** @type {Element | null} */ (event.target)) })
-
+        const ended = d.up(String(event.button), event, { blocked: overlayOpen(/** @type {Element | null} */ (event.target)) })
         // Browsers navigate on a side button's mouseup/auxclick, so cancel both while bound
-        if (isSideButton(event.button) && (consumed || press.fired.size > 0)) {
+        if (ended && isSideButton(event.button) && (ended.consumed || ended.press.fired.size > 0)) {
           event.preventDefault()
           swallowAux.add(event.button)
         }

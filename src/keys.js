@@ -4,7 +4,9 @@
  * "up" and "plus". Showing and recording bindings is keybinds/keys-ui.
  */
 
-import { RELEASE_SUFFIX, NO_MODS, parseMods, modsToPrefix, eventMods, overlayOpen, inInput } from './core.js'
+import { NO_MODS, parseMods, modsToPrefix, eventMods, overlayOpen, inInput } from './core.js'
+
+const MODIFIER_KEYS = ['Shift', 'Control', 'Alt', 'Meta']
 
 /** @typedef {import('./core.js').Modifiers} Modifiers */
 /** @typedef {import('./core.js').Input} Input */
@@ -23,6 +25,7 @@ import { RELEASE_SUFFIX, NO_MODS, parseMods, modsToPrefix, eventMods, overlayOpe
  * @property {(key: string) => boolean} [accepts] - Keys it makes bindable
  * @property {(key: string) => string | undefined} [shifted] - What a binding with Shift means instead
  * @property {(key: string, prefix: string, suffix: string) => string[]} [lookups] - More lookups for a key event
+ * @property {(name: string) => string | undefined} [glyph] - How a key is shown, for display pieces like layout()
  */
 
 // Named keys, by the name a key event reports (event.key, or event.code for physical keys)
@@ -112,56 +115,35 @@ export function keys(...syntax) {
     },
 
     listen(d) {
-      /**
-       * Commands a key event triggers, with the modifiers given (the press's, for a release)
-       * @param {KeyboardEvent} event
-       * @param {Modifiers} mods
-       * @param {string} [suffix]
-       */
-      const candidates = (event, mods, suffix = '') =>
-        d.candidates(eventToKeyLookups(event, modsToPrefix(mods), suffix, syntax), eventToKeyLookups(event, '', suffix, syntax), mods)
-
       /** @param {Event} e */
       function onDown(e) {
         const event = /** @type {KeyboardEvent} */ (e)
         // Don't fire keybinds while the command palette or settings panel is open
         if (overlayOpen(/** @type {Element | null} */ (event.target))) return
-
-        const id = event.code || event.key
-        let press = d.presses.get(id)
-        if (!press || !event.repeat) {
-          press = { mods: eventMods(event), fired: new Set(), key: event.key, code: event.code }
-          d.presses.set(id, press)
-        }
-        const found = candidates(event, eventMods(event))
-        if (found) d.fire(found, event, { inInput: inInput(event.target), press })
+        // Nothing binds a modifier on its own, and pressing one (Shift, to type "G") mustn't
+        // break off a sequence
+        if (MODIFIER_KEYS.includes(event.key)) return
+        /** @type {import('./core.js').Lookups} */
+        const lookups = (suffix, mods) =>
+          [eventToKeyLookups(event, modsToPrefix(mods), suffix, syntax), eventToKeyLookups(event, '', suffix, syntax)]
+        d.down(event.code || event.key, event, {
+          mods: eventMods(event), lookups, repeat: event.repeat, inInput: inInput(event.target),
+          extra: { key: event.key, code: event.code },
+        })
       }
 
       /** @param {Event} e */
       function onUp(e) {
         const event = /** @type {KeyboardEvent} */ (e)
-        const id = event.code || event.key
-        const press = d.presses.get(id)
-        if (!press) return
-        d.presses.delete(id)
-        if (!d.releases) return
-        const found = candidates(event, press.mods, RELEASE_SUFFIX)
-        if (found) {
-          d.release(found, press, event, { blocked: overlayOpen(/** @type {Element | null} */ (event.target)), inInput: inInput(event.target) })
-        }
+        d.up(event.code || event.key, event, { blocked: overlayOpen(/** @type {Element | null} */ (event.target)), inInput: inInput(event.target) })
       }
 
       // A key let go after the window lost focus sends its keyup to whatever has focus now, so
       // every held key is released when focus goes. Coming back with it still down, its
       // auto-repeat starts a new press.
       function onBlur() {
-        const presses = [...d.presses.values()]
-        d.presses.clear()
-        if (!d.releases) return
-        for (const press of presses) {
-          const event = new KeyboardEvent('keyup', { key: /** @type {string} */ (press['key']), code: /** @type {string} */ (press['code']), cancelable: true })
-          const found = candidates(event, press.mods, RELEASE_SUFFIX)
-          if (found) d.release(found, press, event)
+        for (const [id, press] of [...d.presses]) {
+          d.up(id, new KeyboardEvent('keyup', { key: /** @type {string} */ (press['key']), code: /** @type {string} */ (press['code']), cancelable: true }))
         }
       }
 

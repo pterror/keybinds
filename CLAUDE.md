@@ -12,7 +12,8 @@ One module per part, JSDoc types checked via `tsconfig.json`; `src/index.js` re-
 
 - `src/core.js` — `keybinds()`, the dispatcher: commands, context, presses, `held`. Knows no particular input
 - `src/keys.js`, `src/mouse.js`, `src/gamepad.js`, `src/axes.js` — inputs: each parses and listens for its own bindings; `src/*-ui.js` formats and records them
-- Syntax beyond modifiers and key names is opt-in, one module each: `releases.js` (`:up`), `any-modifiers.js`, `keys-symbols.js` (`?`), `keys-aliases.js` (`up`, `plus`). Without one, its syntax is an error
+- Syntax beyond modifiers and key names is opt-in, one module each: `releases.js` (`:up`), `holds.js` (`:hold`, `:tap`), `sequences.js` (`g i`), `any-modifiers.js`, `keys-symbols.js` (`?`), `keys-aliases.js` (`up`, `plus`). Without one, its syntax is an error. `keys-layout.js` shows physical keys as the person's layout types them
+- Inputs report presses starting and ending (`d.down`, `d.up`); the core runs what's bound, and phases (releases, holds) and sequences hook in there
 - `src/search.js`, `src/store.js`, `src/modifiers.js`, `src/hub.js`, `src/components/*.js`
 
 Key concepts:

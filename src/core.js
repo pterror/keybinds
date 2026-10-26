@@ -64,30 +64,36 @@
  */
 
 /**
- * A held input. `mods` is the modifier state at press time, which release bindings match
- * against; `fired` holds the commands whose press executed. Inputs keep what else they need on it.
- * @typedef {{ mods: Modifiers, fired: Set<Command>, [extra: string]: unknown }} Press
+ * The lookups of an input event, with a suffix (":up") and the modifiers to match against:
+ * exact ones, and ones without modifiers for `anyModifiers` commands
+ * @typedef {(suffix: string, mods: Modifiers) => [string[], string[]]} Lookups
  */
 
 /**
- * What keybinds() gives each input to work with
+ * A held input. `mods` is the modifier state at press time, which release bindings match
+ * against; `fired` holds the commands that ran for it; `at` is when it started; `lookups` finds
+ * its bindings. Inputs keep what else they need on it.
+ * @typedef {{ mods: Modifiers, fired: Set<Command>, at: number, lookups: Lookups, [extra: string]: unknown }} Press
+ */
+
+/**
+ * What keybinds() gives each input to work with. An input reports presses starting and ending;
+ * the core runs what's bound, and its phases (releases(), holds()) and sequences() do their part.
  * @typedef {Object} Dispatch
  * @property {EventTarget} target - Where to listen
  * @property {boolean} capture - Whether to listen in the capture phase
  * @property {boolean} bound - Whether any command has a binding for this input
- * @property {boolean} releases - Whether release bindings are on (releases()); without them an
- *   input only needs to note that a press ended
  * @property {AxisDef[]} axes - The axes passed to keybinds()
  * @property {() => Record<string, unknown>} context
  * @property {Map<string, Press>} presses - This input's held presses, by whatever id it chooses
+ * @property {(id: string, event: Event, press: { mods: Modifiers, lookups: Lookups, repeat?: boolean,
+ *   inInput?: boolean, blocked?: boolean, extra?: Record<string, unknown> }) => Press} down -
+ *   A press started (or repeated: the same press goes on). `blocked`: note it, but run nothing
+ * @property {(id: string, event: Event, where?: { inInput?: boolean, blocked?: boolean }) =>
+ *   { press: Press, consumed: boolean } | null} up - A press ended; null if it wasn't going
  * @property {(lookups: string[], loose: string[], mods: Modifiers) => Command[] | undefined} candidates -
- *   Commands bound to the first of `lookups` that has any, then `anyModifiers` ones bound to the
- *   first of `loose` whose own modifiers are among `mods`
- * @property {(candidates: Command[], event: Event, options?: { inInput?: boolean, press?: Press }) => Command | null} fire -
- *   Runs the first active candidate that takes the event, noting it on `press`
- * @property {(candidates: Command[], press: Press, event: Event, options?: { blocked?: boolean, inInput?: boolean }) => boolean} release -
- *   Runs a release's candidates: commands whose own press fired always run (a hold can't be left
- *   open), the rest as usual until one takes it. Returns whether any did
+ *   Commands bound to the first of `lookups` that has any, then `anyModifiers` ones, for inputs
+ *   with no presses (scrolling)
  * @property {(cmd: Command) => boolean} isActive
  * @property {(cmd: Command, event: Event) => boolean} execute - Runs a command, true if it took the event
  */
@@ -98,8 +104,9 @@
  * @typedef {Object} Input
  * @property {string} field - The command (or axis) field holding its bindings: "keys", "mouse", ...
  * @property {boolean} [axis] - Its bindings are an axis's sources rather than a command's triggers
- * @property {(binding: string, release: boolean) => ParsedBinding} parse - Throws if the binding is invalid.
- *   Gets the binding without its release suffix (":up"); `release` says whether it had one
+ * @property {(step: string, suffix: string) => ParsedBinding} parse - Parses one step of a
+ *   binding, without its suffix (":up", ":hold"), which is given to reject where it can't apply.
+ *   Throws if the binding is invalid
  * @property {(cmd: Command, event: Event) => boolean} [matches] - Whether an event is one of the command's press bindings
  * @property {(d: Dispatch) => InputHandle} listen
  */
@@ -345,10 +352,30 @@ export function inInput(tgt) {
 // Command fields that hold bindings, so a binding no input reads is an error rather than ignored
 const BINDING_FIELDS = /** @type {const} */ (['keys', 'mouse', 'gamepad'])
 
+// Which module reads each binding suffix, for the error when it isn't there
+const SUFFIX_MODULES = /** @type {Record<string, string>} */ ({ ':up': 'releases()', ':hold': 'holds()', ':tap': 'holds()' })
+
 /**
- * Runs a release's candidates: what releases() gives keybinds()
- * @typedef {(candidates: Command[], press: Press, event: Event, options: { blocked?: boolean, inInput?: boolean },
- *   run: { context: Record<string, unknown>, execute: (cmd: Command, ctx: Record<string, unknown>, event: Event) => boolean }) => boolean} Releases
+ * What a phase (releases(), holds()) gets at a press's start or end
+ * @typedef {Object} PhaseRun
+ * @property {Press} press
+ * @property {Event} event
+ * @property {(suffix: string) => Command[] | undefined} find - Commands bound to this press with a suffix
+ * @property {(candidates: Command[]) => boolean} fire - Runs the first candidate that may run and
+ *   takes the event, noting it on the press
+ * @property {(cmd: Command) => boolean} allowed - Whether a command may run now: it's active, the
+ *   input isn't blocked, and it isn't being typed into (unless the command captures input)
+ * @property {(cmd: Command) => boolean} execute - Runs a command whatever `allowed` says; true if it took the event
+ * @property {() => boolean} held - Whether the press is still going
+ */
+
+/**
+ * Something that happens at a press's start or end beyond the press itself, owning the binding
+ * suffixes that say so: releases() (":up"), holds() (":hold", ":tap")
+ * @typedef {Object} Phase
+ * @property {string[]} suffixes
+ * @property {(p: PhaseRun) => void} [down] - When a press starts
+ * @property {(p: PhaseRun) => boolean} [up] - When it ends; returns whether a command took it
  */
 
 /**
@@ -361,36 +388,70 @@ const BINDING_FIELDS = /** @type {const} */ (['keys', 'mouse', 'gamepad'])
  */
 
 /**
+ * Bindings of several steps ("g i", "ctrl+k ctrl+s"): what sequences() gives keybinds(). `steps`
+ * splits a binding (without its suffix) into steps; `table` keeps one input's sequences
+ * @typedef {{
+ *   steps: (binding: string, suffix: string) => string[],
+ *   table: () => {
+ *     add: (steps: string[], cmd: Command) => void,
+ *     check: (lookups: Iterable<string>) => void,
+ *     resolve: (lookups: string[], find: (lookups: string[]) => Command[] | undefined,
+ *       starts: (cmds: Command[]) => boolean) => { found: Command[] | undefined, pending: boolean },
+ *   },
+ * }} Sequences
+ */
+
+/**
  * @typedef {Object} KeybindsOptions
  * @property {Input[]} [inputs] - What to listen to: e.g. [keys(), mouse()]. A command bound
  *   through an input that isn't here is an error
- * @property {Releases} [releases] - From releases(): bindings to an input coming up ("k:up").
- *   Without it, such a binding is an error
+ * @property {Phase} [releases] - From releases(): bindings to an input coming up ("k:up")
+ * @property {Phase} [holds] - From holds(): bindings to holding an input ("k:hold") and to a
+ *   short press ("k:tap")
+ * @property {Sequences} [sequences] - From sequences(): bindings of several steps ("g i")
  * @property {AnyModifiers} [anyModifiers] - From anyModifiers(): commands whose bindings match
- *   whatever other modifiers are held. Without it, such a command is an error
+ *   whatever other modifiers are held
  * @property {EventTarget} [target] - Where to listen (default: window)
  * @property {(cmd: Command, ctx: Record<string, unknown>) => void} [onExecute] - Called after a command consumes an event
  * @property {boolean} [capture] - Listen in the capture phase, so a bound key reaches its command before
  *   anything under the target (an editor, say) handles it. A command that isn't active, or returns false,
  *   leaves the event alone.
  * @property {AxisDef[]} [axes] - Continuous inputs, read with `axis(id)` on what keybinds() returns
+ *
+ * Syntax whose module isn't here is an error naming it, never a binding that silently doesn't fire.
  */
 
 /**
- * A binding through an input. The release suffix (":up") is the core's: it's taken off before the
- * input parses the rest, and allowed only with releases()
+ * The phases among the options
+ * @param {KeybindsOptions} options
+ * @returns {Phase[]}
+ */
+const phasesOf = (options) => /** @type {Phase[]} */ ([options.releases, options.holds].filter(Boolean))
+
+/**
+ * A binding through an input. A suffix (":up") is taken off for the phase that owns it, and
+ * sequences() splits steps ("g i"); each step goes to the input to parse
  * @param {Input} input
  * @param {string} binding
- * @param {boolean} releases - Whether release bindings are allowed
- * @returns {ParsedBinding}
+ * @param {KeybindsOptions} options - Which syntax modules are on
+ * @returns {ParsedBinding & { steps: string[] }}
  */
-export function parseBinding(input, binding, releases) {
-  const trimmed = typeof binding === 'string' ? binding.trim() : binding
-  const release = typeof trimmed === 'string' && trimmed.toLowerCase().endsWith(RELEASE_SUFFIX)
-  if (release && !releases) throw new Error(`"${binding}" is a release binding, which needs releases()`)
-  const parsed = input.parse(release ? trimmed.slice(0, -RELEASE_SUFFIX.length) : trimmed, release)
-  if (!release) return parsed
-  return { ...parsed, lookup: parsed.lookup + RELEASE_SUFFIX, loose: parsed.loose + RELEASE_SUFFIX }
+export function parseBinding(input, binding, options) {
+  if (!binding || typeof binding !== 'string') throw new Error(`Invalid binding: ${binding}`)
+  let body = binding.trim()
+  let suffix = ''
+  for (const p of phasesOf(options)) for (const s of p.suffixes) if (body.toLowerCase().endsWith(s)) suffix = s
+  body = body.slice(0, body.length - suffix.length)
+  const unread = /:(up|hold|tap)$/i.exec(body)?.[0].toLowerCase()
+  if (unread) throw new Error(`"${binding}" ends in "${unread}", which needs ${SUFFIX_MODULES[unread]}`)
+  const steps = options.sequences ? options.sequences.steps(body, suffix) : [body]
+  if (!options.sequences && /\S\s+(?!\+)\S/.test(body.replace(/\s*\+\s*/g, '+'))) {
+    throw new Error(`"${binding}" has several steps, which needs sequences()`)
+  }
+  const parsed = steps.map((s) => input.parse(s, suffix))
+  const last = /** @type {ParsedBinding} */ (parsed[parsed.length - 1])
+  const lookups = parsed.map((p) => p.lookup)
+  return { lookup: lookups.join(' ') + suffix, loose: last.loose + suffix, mods: last.mods, steps: lookups }
 }
 
 /**
@@ -403,12 +464,14 @@ function index(commands, input, options) {
   /** @type {Map<string, Command[]>} */
   const exact = new Map()
   const loose = options.anyModifiers?.table() ?? null
+  const seq = options.sequences?.table() ?? null
   for (const cmd of commands) {
     for (const binding of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
       if (cmd.anyModifiers && !loose) throw new Error(`Command "${cmd.id}" sets anyModifiers, which needs anyModifiers()`)
       let parsed
       try {
-        parsed = parseBinding(input, binding, !!options.releases)
+        parsed = parseBinding(input, binding, options)
+        if (parsed.steps.length > 1) seq?.add(parsed.steps, cmd)
       } catch (e) {
         throw new Error(`Command "${cmd.id}": ${e instanceof Error ? e.message : String(e)}`)
       }
@@ -420,7 +483,8 @@ function index(commands, input, options) {
       }
     }
   }
-  return { exact, loose }
+  seq?.check(exact.keys())
+  return { exact, loose, seq }
 }
 
 /**
@@ -462,7 +526,8 @@ function checkInputs(commands, options) {
  *   `held(id)`: whether a command is held right now, and `axis(id)`: an axis's value
  */
 export function keybinds(commands, getContext = () => ({}), options = {}) {
-  const { inputs = [], target = window, onExecute, capture = false, axes = [], releases } = options
+  const { inputs = [], target = window, onExecute, capture = false, axes = [] } = options
+  const phases = phasesOf(options)
   checkInputs(commands, options)
 
   /**
@@ -489,43 +554,106 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   const handles = []
 
   for (const input of inputs) {
-    const { exact, loose } = input.axis ? { exact: new Map(), loose: null } : index(commands, input, options)
+    const { exact, loose, seq } = input.axis ? { exact: new Map(), loose: null, seq: null } : index(commands, input, options)
     /** @type {Map<string, Press>} */
     const presses = new Map()
     allPresses.push(presses)
+
+    /** @param {string[]} lookups */
+    const findExact = (lookups) => {
+      for (const l of lookups) {
+        const found = exact.get(l)
+        if (found) return found
+      }
+      return undefined
+    }
+
+    /** @type {Dispatch['candidates']} */
+    const candidates = (lookups, looseLookups, mods) => {
+      const found = findExact(lookups)
+      return loose ? loose.find(looseLookups, mods, found) : found
+    }
+
+    /**
+     * @param {Press} press
+     * @param {string} suffix
+     */
+    const find = (press, suffix) => {
+      const [l, ll] = press.lookups(suffix, press.mods)
+      return candidates(l, ll, press.mods)
+    }
+
+    /**
+     * A press's view of running commands; see PhaseRun
+     * @param {Press} press
+     * @param {string} id
+     * @param {Event} event
+     * @param {{ blocked?: boolean, inInput?: boolean }} where
+     * @returns {PhaseRun}
+     */
+    const phaseRun = (press, id, event, { blocked = false, inInput = false }) => {
+      /** @param {Command} cmd */
+      const allowed = (cmd) => !blocked && (!inInput || !!cmd.captureInput) && isActive(cmd, getContext())
+      /** @param {Command} cmd */
+      const execute = (cmd) => tryExecute(cmd, getContext(), event)
+      return {
+        press,
+        event,
+        find: (suffix) => find(press, suffix),
+        fire(found) {
+          for (const cmd of found) {
+            if (allowed(cmd) && execute(cmd)) {
+              press.fired.add(cmd)
+              return true
+            }
+          }
+          return false
+        },
+        allowed,
+        execute,
+        held: () => presses.get(id) === press,
+      }
+    }
 
     /** @type {Dispatch} */
     const d = {
       target,
       capture,
       bound: exact.size > 0 || (loose?.size() ?? 0) > 0,
-      releases: !!releases,
       axes,
       context: getContext,
       presses,
-      candidates(lookups, looseLookups, mods) {
-        /** @type {Command[] | undefined} */
-        let found
-        for (const l of lookups) {
-          found = exact.get(l)
-          if (found) break
+      candidates,
+      down(id, event, { mods, lookups, repeat = false, inInput = false, blocked = false, extra }) {
+        let press = presses.get(id)
+        const fresh = !press || !repeat
+        if (!press || fresh) {
+          press = { ...extra, mods, fired: new Set(), at: performance.now(), lookups }
+          presses.set(id, press)
         }
-        return loose ? loose.find(looseLookups, mods, found) : found
-      },
-      fire(candidates, event, { inInput = false, press } = {}) {
-        const context = getContext()
-        for (const cmd of candidates) {
-          if (inInput && !cmd.captureInput) continue
-          if (!isActive(cmd, context)) continue
-          if (tryExecute(cmd, context, event)) {
-            press?.fired.add(cmd)
-            return cmd
-          }
+        if (blocked) return press
+        const run = phaseRun(press, id, event, { inInput })
+        const [l, ll] = lookups('', mods)
+        // Sequences go first: a press that starts or continues one is the sequence's, not the page's
+        const step = seq && fresh ? seq.resolve(l, findExact, (cmds) => cmds.some(run.allowed)) : null
+        if (step?.pending) {
+          event.preventDefault()
+          event.stopPropagation()
+          return press
         }
-        return null
+        const found = step ? (loose ? loose.find(ll, mods, step.found) : step.found) : candidates(l, ll, mods)
+        if (found) run.fire(found)
+        if (fresh) for (const p of phases) p.down?.(run)
+        return press
       },
-      release: (candidates, press, event, opts = {}) =>
-        !!releases && releases(candidates, press, event, opts, { context: getContext(), execute: tryExecute }),
+      up(id, event, { inInput = false, blocked = false } = {}) {
+        const press = presses.get(id)
+        if (!press) return null
+        presses.delete(id)
+        let consumed = false
+        for (const p of phases) if (p.up?.(phaseRun(press, id, event, { inInput, blocked }))) consumed = true
+        return { press, consumed }
+      },
       isActive: (cmd) => isActive(cmd, getContext()),
       execute: (cmd, event) => tryExecute(cmd, getContext(), event),
     }
@@ -565,7 +693,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 /**
  * Validate all commands upfront (call on init to catch typos early)
  * @param {Command[]} commands
- * @param {KeybindsOptions} options - As for keybinds(): the inputs, and releases and anyModifiers if used
+ * @param {KeybindsOptions} options - As for keybinds(): the inputs, and the syntax modules used
  * @returns {true}
  * @throws {Error} if any binding is invalid
  */
@@ -595,6 +723,26 @@ export function executeCommand(commands, id, context = {}) {
 }
 
 /**
+ * Split a binding into its steps and its suffix (":up", ":hold", ":tap"), if any, whatever syntax
+ * modules are on: for showing and comparing bindings
+ * @param {string} binding
+ * @returns {{ steps: string[], suffix: string }}
+ */
+export function splitBinding(binding) {
+  let body = binding.trim()
+  const suffix = /:(up|hold|tap)$/i.exec(body)?.[0].toLowerCase() ?? ''
+  body = body.slice(0, body.length - suffix.length)
+  return { steps: body.replace(/\s*\+\s*/g, '+').split(/\s+/).filter(Boolean), suffix }
+}
+
+/** Every piece of syntax on, for comparing bindings whatever they use */
+const ALL_SYNTAX = /** @type {KeybindsOptions} */ ({
+  releases: { suffixes: [':up'] },
+  holds: { suffixes: [':hold', ':tap'] },
+  sequences: { steps: (b) => splitBinding(b).steps, table: () => { throw new Error('only for comparing') } },
+})
+
+/**
  * Check if a binding string conflicts with any command in the schema
  *
  * @param {Schema} schema - The binding schema to check against
@@ -606,7 +754,7 @@ export function executeCommand(commands, id, context = {}) {
 export function findConflict(schema, bindingStr, input, excludeId) {
   let candidate
   try {
-    candidate = parseBinding(input, bindingStr, true).lookup
+    candidate = parseBinding(input, bindingStr, ALL_SYNTAX).lookup
   } catch {
     return null
   }
@@ -618,7 +766,7 @@ export function findConflict(schema, bindingStr, input, excludeId) {
 
     for (const b of bindings) {
       try {
-        if (parseBinding(input, b, true).lookup === candidate) {
+        if (parseBinding(input, b, ALL_SYNTAX).lookup === candidate) {
           return { commandId: id, label: binding.label }
         }
       } catch {
@@ -628,6 +776,24 @@ export function findConflict(schema, bindingStr, input, excludeId) {
   }
 
   return null
+}
+
+const SUFFIX_LABELS = /** @type {Record<string, string>} */ ({ ':up': 'Release', ':hold': 'Hold', ':tap': 'Tap' })
+
+/**
+ * A binding as display parts: each step through the input's format, "then" between steps, and a
+ * last part for a suffix ("Release", "Hold", "Tap")
+ * @param {InputUI} input
+ * @param {string} binding
+ * @returns {string[]}
+ */
+export function formatBinding(input, binding) {
+  if (input.axis) return input.format(binding)
+  const { steps, suffix } = splitBinding(binding)
+  const parts = steps.flatMap((s, i) => i === 0 ? input.format(s) : ['then', ...input.format(s)])
+  const label = SUFFIX_LABELS[suffix]
+  if (label) parts.push(label)
+  return parts
 }
 
 /**
@@ -642,8 +808,19 @@ export function bindingParts(cmd, inputs) {
   for (const input of inputs) {
     if (input.axis) continue
     for (const b of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
-      out.push(input.format(b))
+      out.push(formatBinding(input, b))
     }
   }
   return out
+}
+
+/**
+ * A binding's normalized form through an input, whatever syntax it uses, for telling whether two
+ * bindings are the same
+ * @param {Input} input
+ * @param {string} binding
+ * @returns {string}
+ */
+export function bindingLookup(input, binding) {
+  return parseBinding(input, binding, ALL_SYNTAX).lookup
 }

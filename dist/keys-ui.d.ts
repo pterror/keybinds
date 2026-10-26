@@ -6,9 +6,10 @@ export type KeySyntax = import('./keys.js').KeySyntax;
 /**
  * Format key binding into array of display parts (e.g., "$mod+k" -> ["⌘", "K"] on Mac)
  * @param {string} key
+ * @param {KeySyntax[]} [syntax] - As for keys(); a layout() among them shows physical keys as it types them
  * @returns {string[]}
  */
-export declare function formatKeyParts(key: string): string[];
+export declare function formatKeyParts(key: string, syntax?: KeySyntax[]): string[];
 /**
  * Convert a KeyboardEvent to a canonical binding string (e.g. "$mod+shift+k"), in the syntax the
  * keyboard input reads: a typed character like "?" only with symbols(), "plus" only with aliases()

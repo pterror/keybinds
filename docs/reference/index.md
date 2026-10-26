@@ -12,6 +12,8 @@ function keybinds(
     inputs?: Input[],
     releases?: Releases,          // releases()
     anyModifiers?: AnyModifiers,  // anyModifiers()
+    holds?: Phase,                // holds()
+    sequences?: Sequences,        // sequences()
     target?: EventTarget,
     onExecute?: (cmd, ctx) => void,
     capture?: boolean,
@@ -25,6 +27,8 @@ function keybinds(
 | `inputs` | `[]` | What to listen to, e.g. `[keys(), mouse()]`. A command with bindings no input reads (gamepad bindings without `gamepad()`, say) is an error |
 | `releases` | - | `releases()`: bindings to an input coming up (`k:up`). Without it, such a binding is an error |
 | `anyModifiers` | - | `anyModifiers()`: commands with `anyModifiers: true` match whatever other modifiers are held. Without it, such a command is an error |
+| `holds` | - | `holds({ delay? })`: `k:hold` runs once held `delay` ms (default 500), `k:tap` on a shorter press |
+| `sequences` | - | `sequences({ timeout? })`: bindings of several steps (`g i`, `ctrl+k ctrl+s`), each within `timeout` ms (default 1000) of the last |
 | `target` | `window` | Where to listen |
 | `onExecute` | - | Called after a command consumes an event |
 | `capture` | `false` | Listen in the capture phase, so a bound key reaches its command before anything under `target` (an editor, say) handles it. A key with no active command, or whose command returns `false`, goes on as usual. |
@@ -64,7 +68,7 @@ An input is a plain object, so a new kind of input (a MIDI controller, say) is w
 interface Input {
   field: string                 // the command field holding its bindings
   axis?: boolean                // its bindings are an axis's sources
-  parse(binding: string): { lookup: string, loose: string, mods: Modifiers }  // throws if invalid
+  parse(step: string, suffix: string): { lookup: string, loose: string, mods: Modifiers }  // one step, without its suffix; throws if invalid
   matches?(cmd: Command, event: Event): boolean
   listen(d: Dispatch): (() => void) & { axis?(id: string): AxisValue }
 }
@@ -81,7 +85,7 @@ interface InputUI extends Input {
 }
 ```
 
-`listen` gets a `Dispatch` with the target, the context, this input's held presses, `candidates(lookups, loose, mods)` to find the commands bound to an event, and `fire`/`release` to run them. See `src/keys.js` for a complete one.
+`listen` gets a `Dispatch`: the target, the context, this input's held presses, and `down(id, event, { mods, lookups })` / `up(id, event)` to report a press starting and ending. The core runs what's bound and lets releases, holds and sequences do their part. `lookups(suffix, mods)` gives the event's lookups. See `src/keys.js` for a complete one.
 
 ---
 
@@ -308,7 +312,7 @@ if (conflict) {
 
 ## CommandHub
 
-`new CommandHub({ inputs?, releases?, anyModifiers?, components?, host?, storageKey?, storage?, listen?, adapt? })`. `inputs` are what it listens to and what its components show and record (with components, their UI halves); `releases` and `anyModifiers` are as for `keybinds()`, and with `releases` the settings panel offers release bindings; `components` are the classes to make inside `host` (any of `CommandPalette`, `KeybindCheatsheet`, `KeybindSettings`, `ContextMenu`). `storage` is `(scope) => BindingsStorage`, for keeping rebindings somewhere other than localStorage. See [Commands From Many Places](../guide/commands.md#commands-from-many-places-commandhub).
+`new CommandHub({ inputs?, releases?, holds?, sequences?, anyModifiers?, components?, host?, storageKey?, storage?, listen?, adapt? })`. `inputs` are what it listens to and what its components show and record (with components, their UI halves); `releases`, `holds`, `sequences` and `anyModifiers` are as for `keybinds()`, and with `releases` the settings panel offers release bindings; `components` are the classes to make inside `host` (any of `CommandPalette`, `KeybindCheatsheet`, `KeybindSettings`, `ContextMenu`). `storage` is `(scope) => BindingsStorage`, for keeping rebindings somewhere other than localStorage. See [Commands From Many Places](../guide/commands.md#commands-from-many-places-commandhub).
 
 | Method | Description |
 |--------|-------------|

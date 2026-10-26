@@ -45,35 +45,44 @@ export type ParsedBinding = {
     loose: string;
     mods: Modifiers;
 };
+export type Lookups = (suffix: string, mods: Modifiers) => [string[], string[]];
 export type Press = {
     mods: Modifiers;
     fired: Set<Command>;
+    at: number;
+    lookups: Lookups;
     [extra: string]: unknown;
 };
 export type Dispatch = {
     target: EventTarget;
     capture: boolean;
     bound: boolean;
-    releases: boolean;
     axes: AxisDef[];
     context: () => Record<string, unknown>;
     presses: Map<string, Press>;
-    candidates: (lookups: string[], loose: string[], mods: Modifiers) => Command[] | undefined;
-    fire: (candidates: Command[], event: Event, options?: {
+    down: (id: string, event: Event, press: {
+        mods: Modifiers;
+        lookups: Lookups;
+        repeat?: boolean;
         inInput?: boolean;
-        press?: Press;
-    }) => Command | null;
-    release: (candidates: Command[], press: Press, event: Event, options?: {
         blocked?: boolean;
+        extra?: Record<string, unknown>;
+    }) => Press;
+    up: (id: string, event: Event, where?: {
         inInput?: boolean;
-    }) => boolean;
+        blocked?: boolean;
+    }) => {
+        press: Press;
+        consumed: boolean;
+    } | null;
+    candidates: (lookups: string[], loose: string[], mods: Modifiers) => Command[] | undefined;
     isActive: (cmd: Command) => boolean;
     execute: (cmd: Command, event: Event) => boolean;
 };
 export type Input = {
     field: string;
     axis?: boolean;
-    parse: (binding: string, release: boolean) => ParsedBinding;
+    parse: (step: string, suffix: string) => ParsedBinding;
     matches?: (cmd: Command, event: Event) => boolean;
     listen: (d: Dispatch) => InputHandle;
 };
@@ -183,29 +192,34 @@ export type BindingOverrides = Record<string, {
  * @typedef {{ lookup: string, loose: string, mods: Modifiers }} ParsedBinding
  */
 /**
- * A held input. `mods` is the modifier state at press time, which release bindings match
- * against; `fired` holds the commands whose press executed. Inputs keep what else they need on it.
- * @typedef {{ mods: Modifiers, fired: Set<Command>, [extra: string]: unknown }} Press
+ * The lookups of an input event, with a suffix (":up") and the modifiers to match against:
+ * exact ones, and ones without modifiers for `anyModifiers` commands
+ * @typedef {(suffix: string, mods: Modifiers) => [string[], string[]]} Lookups
  */
 /**
- * What keybinds() gives each input to work with
+ * A held input. `mods` is the modifier state at press time, which release bindings match
+ * against; `fired` holds the commands that ran for it; `at` is when it started; `lookups` finds
+ * its bindings. Inputs keep what else they need on it.
+ * @typedef {{ mods: Modifiers, fired: Set<Command>, at: number, lookups: Lookups, [extra: string]: unknown }} Press
+ */
+/**
+ * What keybinds() gives each input to work with. An input reports presses starting and ending;
+ * the core runs what's bound, and its phases (releases(), holds()) and sequences() do their part.
  * @typedef {Object} Dispatch
  * @property {EventTarget} target - Where to listen
  * @property {boolean} capture - Whether to listen in the capture phase
  * @property {boolean} bound - Whether any command has a binding for this input
- * @property {boolean} releases - Whether release bindings are on (releases()); without them an
- *   input only needs to note that a press ended
  * @property {AxisDef[]} axes - The axes passed to keybinds()
  * @property {() => Record<string, unknown>} context
  * @property {Map<string, Press>} presses - This input's held presses, by whatever id it chooses
+ * @property {(id: string, event: Event, press: { mods: Modifiers, lookups: Lookups, repeat?: boolean,
+ *   inInput?: boolean, blocked?: boolean, extra?: Record<string, unknown> }) => Press} down -
+ *   A press started (or repeated: the same press goes on). `blocked`: note it, but run nothing
+ * @property {(id: string, event: Event, where?: { inInput?: boolean, blocked?: boolean }) =>
+ *   { press: Press, consumed: boolean } | null} up - A press ended; null if it wasn't going
  * @property {(lookups: string[], loose: string[], mods: Modifiers) => Command[] | undefined} candidates -
- *   Commands bound to the first of `lookups` that has any, then `anyModifiers` ones bound to the
- *   first of `loose` whose own modifiers are among `mods`
- * @property {(candidates: Command[], event: Event, options?: { inInput?: boolean, press?: Press }) => Command | null} fire -
- *   Runs the first active candidate that takes the event, noting it on `press`
- * @property {(candidates: Command[], press: Press, event: Event, options?: { blocked?: boolean, inInput?: boolean }) => boolean} release -
- *   Runs a release's candidates: commands whose own press fired always run (a hold can't be left
- *   open), the rest as usual until one takes it. Returns whether any did
+ *   Commands bound to the first of `lookups` that has any, then `anyModifiers` ones, for inputs
+ *   with no presses (scrolling)
  * @property {(cmd: Command) => boolean} isActive
  * @property {(cmd: Command, event: Event) => boolean} execute - Runs a command, true if it took the event
  */
@@ -215,8 +229,9 @@ export type BindingOverrides = Record<string, {
  * @typedef {Object} Input
  * @property {string} field - The command (or axis) field holding its bindings: "keys", "mouse", ...
  * @property {boolean} [axis] - Its bindings are an axis's sources rather than a command's triggers
- * @property {(binding: string, release: boolean) => ParsedBinding} parse - Throws if the binding is invalid.
- *   Gets the binding without its release suffix (":up"); `release` says whether it had one
+ * @property {(step: string, suffix: string) => ParsedBinding} parse - Parses one step of a
+ *   binding, without its suffix (":up", ":hold"), which is given to reject where it can't apply.
+ *   Throws if the binding is invalid
  * @property {(cmd: Command, event: Event) => boolean} [matches] - Whether an event is one of the command's press bindings
  * @property {(d: Dispatch) => InputHandle} listen
  */
@@ -367,13 +382,20 @@ export declare function anyOverlayOpen(): boolean;
  * @param {EventTarget | null} tgt
  */
 export declare function inInput(tgt: EventTarget | null): boolean;
-export type Releases = (candidates: Command[], press: Press, event: Event, options: {
-    blocked?: boolean;
-    inInput?: boolean;
-}, run: {
-    context: Record<string, unknown>;
-    execute: (cmd: Command, ctx: Record<string, unknown>, event: Event) => boolean;
-}) => boolean;
+export type PhaseRun = {
+    press: Press;
+    event: Event;
+    find: (suffix: string) => Command[] | undefined;
+    fire: (candidates: Command[]) => boolean;
+    allowed: (cmd: Command) => boolean;
+    execute: (cmd: Command) => boolean;
+    held: () => boolean;
+};
+export type Phase = {
+    suffixes: string[];
+    down?: (p: PhaseRun) => void;
+    up?: (p: PhaseRun) => boolean;
+};
 export type AnyModifiers = {
     table: () => {
         add: (parsed: ParsedBinding, cmd: Command) => void;
@@ -381,9 +403,22 @@ export type AnyModifiers = {
         size: () => number;
     };
 };
+export type Sequences = {
+    steps: (binding: string, suffix: string) => string[];
+    table: () => {
+        add: (steps: string[], cmd: Command) => void;
+        check: (lookups: Iterable<string>) => void;
+        resolve: (lookups: string[], find: (lookups: string[]) => Command[] | undefined, starts: (cmds: Command[]) => boolean) => {
+            found: Command[] | undefined;
+            pending: boolean;
+        };
+    };
+};
 export type KeybindsOptions = {
     inputs?: Input[];
-    releases?: Releases;
+    releases?: Phase;
+    holds?: Phase;
+    sequences?: Sequences;
     anyModifiers?: AnyModifiers;
     target?: EventTarget;
     onExecute?: (cmd: Command, ctx: Record<string, unknown>) => void;
@@ -391,42 +426,16 @@ export type KeybindsOptions = {
     axes?: AxisDef[];
 };
 /**
- * Runs a release's candidates: what releases() gives keybinds()
- * @typedef {(candidates: Command[], press: Press, event: Event, options: { blocked?: boolean, inInput?: boolean },
- *   run: { context: Record<string, unknown>, execute: (cmd: Command, ctx: Record<string, unknown>, event: Event) => boolean }) => boolean} Releases
- */
-/**
- * Finds `anyModifiers` commands: what anyModifiers() gives keybinds(), one table per input
- * @typedef {{ table: () => {
- *   add: (parsed: ParsedBinding, cmd: Command) => void,
- *   find: (loose: string[], mods: Modifiers, found: Command[] | undefined) => Command[] | undefined,
- *   size: () => number,
- * } }} AnyModifiers
- */
-/**
- * @typedef {Object} KeybindsOptions
- * @property {Input[]} [inputs] - What to listen to: e.g. [keys(), mouse()]. A command bound
- *   through an input that isn't here is an error
- * @property {Releases} [releases] - From releases(): bindings to an input coming up ("k:up").
- *   Without it, such a binding is an error
- * @property {AnyModifiers} [anyModifiers] - From anyModifiers(): commands whose bindings match
- *   whatever other modifiers are held. Without it, such a command is an error
- * @property {EventTarget} [target] - Where to listen (default: window)
- * @property {(cmd: Command, ctx: Record<string, unknown>) => void} [onExecute] - Called after a command consumes an event
- * @property {boolean} [capture] - Listen in the capture phase, so a bound key reaches its command before
- *   anything under the target (an editor, say) handles it. A command that isn't active, or returns false,
- *   leaves the event alone.
- * @property {AxisDef[]} [axes] - Continuous inputs, read with `axis(id)` on what keybinds() returns
- */
-/**
- * A binding through an input. The release suffix (":up") is the core's: it's taken off before the
- * input parses the rest, and allowed only with releases()
+ * A binding through an input. A suffix (":up") is taken off for the phase that owns it, and
+ * sequences() splits steps ("g i"); each step goes to the input to parse
  * @param {Input} input
  * @param {string} binding
- * @param {boolean} releases - Whether release bindings are allowed
- * @returns {ParsedBinding}
+ * @param {KeybindsOptions} options - Which syntax modules are on
+ * @returns {ParsedBinding & { steps: string[] }}
  */
-export declare function parseBinding(input: Input, binding: string, releases: boolean): ParsedBinding;
+export declare function parseBinding(input: Input, binding: string, options: KeybindsOptions): ParsedBinding & {
+    steps: string[];
+};
 /**
  * Create keybind handler
  *
@@ -456,7 +465,7 @@ export declare function keybinds(commands: Command[], getContext?: () => Record<
 /**
  * Validate all commands upfront (call on init to catch typos early)
  * @param {Command[]} commands
- * @param {KeybindsOptions} options - As for keybinds(): the inputs, and releases and anyModifiers if used
+ * @param {KeybindsOptions} options - As for keybinds(): the inputs, and the syntax modules used
  * @returns {true}
  * @throws {Error} if any binding is invalid
  */
@@ -469,6 +478,16 @@ export declare function validateCommands(commands: Command[], options: KeybindsO
  * @returns {boolean}
  */
 export declare function executeCommand(commands: Command[], id: string, context?: Record<string, unknown>): boolean;
+/**
+ * Split a binding into its steps and its suffix (":up", ":hold", ":tap"), if any, whatever syntax
+ * modules are on: for showing and comparing bindings
+ * @param {string} binding
+ * @returns {{ steps: string[], suffix: string }}
+ */
+export declare function splitBinding(binding: string): {
+    steps: string[];
+    suffix: string;
+};
 /**
  * Check if a binding string conflicts with any command in the schema
  *
@@ -483,9 +502,25 @@ export declare function findConflict(schema: Schema, bindingStr: string, input: 
     label: string;
 } | null;
 /**
+ * A binding as display parts: each step through the input's format, "then" between steps, and a
+ * last part for a suffix ("Release", "Hold", "Tap")
+ * @param {InputUI} input
+ * @param {string} binding
+ * @returns {string[]}
+ */
+export declare function formatBinding(input: InputUI, binding: string): string[];
+/**
  * A command's bindings through each input, as display parts, in the order of `inputs`
  * @param {Command} cmd
  * @param {InputUI[]} inputs
  * @returns {string[][]}
  */
 export declare function bindingParts(cmd: Command, inputs: InputUI[]): string[][];
+/**
+ * A binding's normalized form through an input, whatever syntax it uses, for telling whether two
+ * bindings are the same
+ * @param {Input} input
+ * @param {string} binding
+ * @returns {string}
+ */
+export declare function bindingLookup(input: Input, binding: string): string;

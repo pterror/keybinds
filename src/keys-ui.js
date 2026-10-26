@@ -19,12 +19,17 @@ const CODE_GLYPHS = /** @type {Record<string, string>} */ ({
 /**
  * Format a single key part for display
  * @param {string} part
+ * @param {KeySyntax[]} syntax - A layout() among them shows physical keys as it types them
  * @returns {string}
  */
-function formatKeyPart(part) {
+function formatKeyPart(part, syntax) {
   const p = part.trim().toLowerCase()
   const mod = formatModPart(p)
   if (mod) return mod
+  for (const s of syntax) {
+    const glyph = s.glyph?.(p)
+    if (glyph) return glyph
+  }
   if (p === 'backspace') return '⌫'
   if (p === 'delete') return '⌦'
   if (p === 'escape' || p === 'esc') return 'Esc'
@@ -41,10 +46,11 @@ function formatKeyPart(part) {
 /**
  * Format key binding into array of display parts (e.g., "$mod+k" -> ["⌘", "K"] on Mac)
  * @param {string} key
+ * @param {KeySyntax[]} [syntax] - As for keys(); a layout() among them shows physical keys as it types them
  * @returns {string[]}
  */
-export function formatKeyParts(key) {
-  return formatWithRelease(key, formatKeyPart)
+export function formatKeyParts(key, syntax = []) {
+  return formatWithRelease(key, (part) => formatKeyPart(part, syntax))
 }
 
 const ASCII_LETTER_OR_DIGIT = /^[a-z0-9]$/
@@ -77,9 +83,10 @@ export function eventToBindingString(event, syntax = []) {
     const aliases = syntax.some((s) => s.name === 'aliases')
     // A symbol is recorded as the character typed ("?"), which already says Shift was needed
     if (symbols && (name !== '+' || aliases)) return [...eventModParts(event, false), name === '+' ? 'plus' : name].join('+') + suffix
-    // Otherwise as the physical key that typed it
-    if (!NAMED_KEY.test(code)) return null
-    name = code
+    // Otherwise as the physical key that typed it (a letter key, on some layouts)
+    if (/^key[a-z]$/.test(code)) name = code.slice(3)
+    else if (NAMED_KEY.test(code)) name = code
+    else return null
   } else if (!isLetterOrDigit(name) && !NAMED_KEY.test(name)) {
     return null
   }
@@ -95,7 +102,7 @@ export function keysUI(...syntax) {
   return {
     ...keys(...syntax),
     label: 'Key',
-    format: formatKeyParts,
+    format: (binding) => formatKeyParts(binding, syntax),
     release: () => true,
     prompt: (release) => release ? 'Press and release a key...' : 'Press a key...',
 

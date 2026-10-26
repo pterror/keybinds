@@ -38,14 +38,18 @@ Binding syntax beyond modifiers and key names is opt-in the same way, each piece
 | `up`, `down`, `left`, `right`, `plus` | `keys(aliases())` |
 | `k:up`: releases | `keybinds(..., { releases: releases() })` |
 | `anyModifiers: true` on a command | `keybinds(..., { anyModifiers: anyModifiers() })` |
+| `g i`, `ctrl+k ctrl+s`, `k k`: steps in a row | `keybinds(..., { sequences: sequences() })` |
+| `k:hold`, `k:tap`: holding and tapping | `keybinds(..., { holds: holds() })` |
 
 ```js
-import { keybinds, keys, symbols, aliases, releases, anyModifiers } from 'keybinds'
+import { keybinds, keys, symbols, aliases, releases, holds, sequences, anyModifiers } from 'keybinds'
 
 keybinds(commands, getContext, {
   inputs: [keys(symbols(), aliases())],
   releases: releases(),
   anyModifiers: anyModifiers(),
+  holds: holds(),
+  sequences: sequences(),
 })
 ```
 
@@ -163,6 +167,45 @@ By default a binding needs exactly its modifiers: `w` doesn't fire while Shift i
 ```js
 { id: 'forward', label: 'Move forward', keys: ['w', 'w:up'], anyModifiers: true, execute: (ctx, e) => held(e.type === 'keydown') }
 ```
+
+## Sequences
+
+With `sequences: sequences()`, a binding of several steps, separated by spaces, runs on its last step:
+
+```js
+keys: ['g i']             // g, then i: go to the inbox
+keys: ['ctrl+k ctrl+s']   // a chord, as in VS Code
+keys: ['j j']             // a double tap
+```
+
+- Each step has to come within `timeout` ms of the last (`sequences({ timeout })`, default 1000).
+- A step that starts a sequence belongs to it: it doesn't reach the page, and binding it on its own as well is an error, since there'd be no telling which was meant.
+- A sequence only starts while one of its commands is active, and not while typing in a field (unless the command has `captureInput`).
+- Pressing Shift between steps doesn't break a sequence, so `g shift+g` works.
+- A press that doesn't go on from the steps so far is a press of its own.
+
+## Holding and Tapping
+
+With `holds: holds()`, a key or button can do one thing when held and another when tapped:
+
+```js
+keys: ['space:hold']      // runs once space has been held for 500 ms
+keys: ['space:tap']       // runs when space comes up sooner than that
+```
+
+`holds({ delay })` sets how long a hold takes. A command that ran on a hold is `held(id)` until the key comes up. Scrolling has no hold or tap.
+
+## Keyboard Layouts
+
+Physical keys (`slash`, `digit1`, `bracketleft`) are shown as the character they type on a US layout. Where the browser can tell the person's own layout (Chromium, through `navigator.keyboard`), show them as that types them instead:
+
+```js
+import { keysUI, layout, loadLayout } from 'keybinds'
+
+const input = keysUI(layout(await loadLayout()))  // shift+slash shows as "Shift -" on a German layout
+```
+
+Letters and typed characters are bound by what they type, so they show as written.
 
 ## Scroll/Wheel Bindings
 

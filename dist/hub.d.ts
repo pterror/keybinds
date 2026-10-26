@@ -21,9 +21,11 @@ export type CommandHubOptions = {
     host?: HTMLElement;
     storageKey?: string;
     storage?: (scope: string) => BindingsStorage;
-    releases?: import('./core.js').Releases;
+    releases?: import('./core.js').Phase;
+    holds?: import('./core.js').Phase;
+    sequences?: import('./core.js').Sequences;
     anyModifiers?: import('./core.js').AnyModifiers;
-    listen?: Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'anyModifiers'>;
+    listen?: Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'holds' | 'sequences' | 'anyModifiers'>;
 };
 /** @typedef {import('./core.js').Command} Command */
 /** @typedef {import('./core.js').AxisDef} AxisDef */
@@ -46,9 +48,11 @@ export type CommandHubOptions = {
  * @property {string} [storageKey] - localStorage key for people's rebindings (default "keybinds"); the scope is appended
  * @property {(scope: string) => BindingsStorage} [storage] - Keep rebindings somewhere other than
  *   localStorage, separately per scope. Takes the place of `storageKey`
- * @property {import('./core.js').Releases} [releases] - From releases(), for release bindings ("k:up")
+ * @property {import('./core.js').Phase} [releases] - From releases(), for release bindings ("k:up")
+ * @property {import('./core.js').Phase} [holds] - From holds(), for "k:hold" and "k:tap"
+ * @property {import('./core.js').Sequences} [sequences] - From sequences(), for bindings of several steps ("g i")
  * @property {import('./core.js').AnyModifiers} [anyModifiers] - From anyModifiers(), for commands with `anyModifiers`
- * @property {Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'anyModifiers'>} [listen] - Passed on to keybinds(): target, capture, onExecute
+ * @property {Omit<KeybindsOptions, 'inputs' | 'axes' | 'releases' | 'holds' | 'sequences' | 'anyModifiers'>} [listen] - Passed on to keybinds(): target, capture, onExecute
  */
 /**
  * Every command on the page, from every source, with one store of people's rebindings.
