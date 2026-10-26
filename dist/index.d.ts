@@ -36,6 +36,19 @@ export type Command = {
     menu?: string | string[] | undefined;
     rank?: number | undefined;
 };
+export type AxisDef = {
+    id: string;
+    label: string;
+    category?: string | undefined;
+    description?: string | undefined;
+    axes: string[];
+    when?: ((ctx: Record<string, unknown>) => boolean) | undefined;
+    hidden?: boolean | undefined;
+};
+export type AxisValue = {
+    position: number;
+    delta: number;
+};
 export type MatchResult = {
     score: number;
     positions?: number[];
@@ -61,7 +74,23 @@ export type ScoredCommand = Command & {
  * @returns {string[]}
  */
 export declare function formatGamepadParts(binding: string): string[];
-export type BindingType = 'keys' | 'mouse' | 'gamepad';
+export type ParsedAxis = {
+    kind: 'mouse' | 'pad';
+    source: string;
+    invert: boolean;
+} | {
+    kind: 'keys';
+    neg: ParsedKey;
+    pos: ParsedKey;
+    invert: boolean;
+};
+/**
+ * Format an axis binding into display parts (e.g. "-mouse:y" -> ["Mouse ↕", "Inverted"])
+ * @param {string} binding
+ * @returns {string[]}
+ */
+export declare function formatAxisParts(binding: string): string[];
+export type BindingType = 'keys' | 'mouse' | 'gamepad' | 'axes';
 export type LooseBinding = {
     cmd: Command;
     mods: Modifiers;
@@ -81,6 +110,7 @@ export type KeybindsOptions = {
         step?: number;
         idle?: number;
     };
+    axes?: AxisDef[];
 };
 /**
  * Create keybind handler
@@ -122,10 +152,12 @@ export type KeybindsOptions = {
  *   hasSelection: selectedId() !== null,
  *   isEditing: editingId() !== null
  * }))
- * @returns {(() => void) & { held: (id: string) => boolean }} Cleanup function, with `held(id)`: whether a command is held right now
+ * @returns {(() => void) & { held: (id: string) => boolean, axis: (id: string) => AxisValue }} Cleanup function, with
+ *   `held(id)`: whether a command is held right now, and `axis(id)`: an axis's value
  */
 export declare function keybinds(commands: Command[], getContext?: () => Record<string, unknown>, options?: KeybindsOptions): (() => void) & {
     held: (id: string) => boolean;
+    axis: (id: string) => AxisValue;
 };
 /**
  * Search commands with a given matcher
@@ -219,6 +251,7 @@ export type BindingSchema = {
     keys?: string[] | undefined;
     mouse?: string[] | undefined;
     gamepad?: string[] | undefined;
+    axes?: string[] | undefined;
     hidden?: boolean | undefined;
     menu?: string | string[] | undefined;
 };
@@ -231,6 +264,7 @@ export type Schema = Record<string, BindingSchema>;
  * @property {string[] | undefined} [keys] - Default keyboard triggers
  * @property {string[] | undefined} [mouse] - Default mouse triggers
  * @property {string[] | undefined} [gamepad] - Default gamepad button triggers
+ * @property {string[] | undefined} [axes] - Default sources, for an axis (see {@link AxisDef})
  * @property {boolean | undefined} [hidden] - Hide from search/settings
  * @property {string | string[] | undefined} [menu] - Context menu tag(s)
  */
@@ -248,9 +282,10 @@ export type BindingOverrides = Record<string, {
     keys?: string[];
     mouse?: string[];
     gamepad?: string[];
+    axes?: string[];
 }>;
 /**
- * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[] }>} BindingOverrides
+ * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[], axes?: string[] }>} BindingOverrides
  */
 /**
  * Merge schema with user overrides
@@ -671,22 +706,24 @@ export declare class KeybindSettings extends HTMLElement {
     /**
      * Get the effective bindings for a command (overrides merged with schema)
      * @param {string} commandId
-     * @returns {{ keys: string[], mouse: string[], gamepad: string[] }}
+     * @returns {{ keys: string[], mouse: string[], gamepad: string[], axes: string[] }}
      */
     _getBindings(commandId: string): {
         keys: string[];
         mouse: string[];
         gamepad: string[];
+        axes: string[];
     };
     /**
      * Save binding changes, cleaning up overrides that match defaults
      * @param {string} commandId
-     * @param {{ keys: string[], mouse: string[], gamepad: string[] }} newBindings
+     * @param {{ keys: string[], mouse: string[], gamepad: string[], axes: string[] }} newBindings
      */
     _saveBindings(commandId: string, newBindings: {
         keys: string[];
         mouse: string[];
         gamepad: string[];
+        axes: string[];
     }): void;
     /**
      * @param {string} commandId
@@ -694,6 +731,7 @@ export declare class KeybindSettings extends HTMLElement {
      * @param {number | null} index - null for adding, number for replacing
      */
     _startRecording(commandId: string, type: BindingType, index: number | null): void;
+    _recordAxis(): void;
     _recordGamepad(): void;
     _stopRecording(): void;
     /** @param {boolean} release */
@@ -1069,6 +1107,13 @@ export declare class CommandHub<D extends {
      */
     setSource(owner: string, get: (() => D[]) | null): void;
     /**
+     * Replace the axes owned by `owner` (null removes them). Takes effect on refresh(). Axes are
+     * rebindable in the settings panel like commands, and read with axis(id).
+     * @param {string} owner
+     * @param {(() => AxisDef[]) | null} get
+     */
+    setAxes(owner: string, get: (() => AxisDef[]) | null): void;
+    /**
      * Add to the context that `when` conditions see. Returns a function that removes it again.
      * @param {() => Partial<C>} get
      * @returns {() => void}
@@ -1089,6 +1134,18 @@ export declare class CommandHub<D extends {
      * @param {string} id
      */
     held(id: string): boolean;
+    /**
+     * An axis's value right now; reading it takes the mouse movement since its last read.
+     * @param {string} id
+     * @returns {AxisValue}
+     */
+    axis(id: string): AxisValue;
+    /**
+     * An axis's sources right now, as shown to people (e.g. "Mouse ↔", "A / D").
+     * @param {string} id
+     * @returns {string[]}
+     */
+    axesFor(id: string): string[];
     /** @returns {D[]} */
     all(): D[];
     /**

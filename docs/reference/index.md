@@ -14,7 +14,7 @@ function keybinds(
     capture?: boolean,
     wheel?: { step?: number, idle?: number },
   }
-): (() => void) & { held(id: string): boolean }
+): (() => void) & { held(id: string): boolean, axis(id: string): { position: number, delta: number } }
 ```
 
 | Option | Default | Description |
@@ -272,6 +272,8 @@ if (conflict) {
 | `get(id)`, `all()` | The definitions as given |
 | `keysFor(id)`, `mouseFor(id)`, `gamepadFor(id)` | Current bindings as shown to people |
 | `held(id)` | Whether a command is held down right now |
+| `setAxes(owner, get)` | Add axes, rebindable like commands |
+| `axis(id)`, `axesFor(id)` | An axis's value, and its sources as shown to people |
 | `mouseMatches(id, event)` | Whether a mouse press is one of the command's bindings |
 | `bindButtons(root)` | Make `[data-command]` elements under `root` run and gray out; returns a stopper |
 | `openPalette()`, `openMenu(tag, x, y)` | Open the components |
@@ -318,9 +320,20 @@ interface BindingSchema {
   keys?: string[]
   mouse?: string[]
   gamepad?: string[]
+  axes?: string[]   // an axis's sources, for axes
   hidden?: boolean
 }
 
 type Schema = Record<string, BindingSchema>
-type BindingOverrides = Record<string, { keys?: string[], mouse?: string[], gamepad?: string[] }>
+type BindingOverrides = Record<string, { keys?: string[], mouse?: string[], gamepad?: string[], axes?: string[] }>
+
+interface AxisDef {
+  id: string
+  label: string
+  category?: string
+  description?: string
+  axes: string[]    // "mouse:x", "pad:rx", "keys:a/d", ... with a leading "-" to invert
+  when?: (ctx: Record<string, unknown>) => boolean
+  hidden?: boolean
+}
 ```

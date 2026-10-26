@@ -48,6 +48,28 @@
  */
 
 /**
+ * A continuous input read every frame (looking around, steering), instead of a command run per
+ * event. Its sources are any of: "mouse:x" / "mouse:y" (movement), "pad:lx" / "pad:ly" /
+ * "pad:rx" / "pad:ry" (sticks), "pad:lt" / "pad:rt" (triggers), "keys:a/d" (the first key toward
+ * -1, the second toward 1). A leading "-" inverts a source.
+ * @typedef {Object} AxisDef
+ * @property {string} id
+ * @property {string} label
+ * @property {string | undefined} [category]
+ * @property {string | undefined} [description]
+ * @property {string[]} axes - Sources
+ * @property {((ctx: Record<string, unknown>) => boolean) | undefined} [when] - Reads as zero otherwise
+ * @property {boolean | undefined} [hidden] - Hide from settings
+ */
+
+/**
+ * An axis's value. `position` is where sticks, triggers and keys are, -1 to 1. `delta` is mouse
+ * movement in pixels since this axis was last read. They're kept apart because they're different
+ * things: a position is scaled by a speed and the frame's time, a delta by a sensitivity.
+ * @typedef {{ position: number, delta: number }} AxisValue
+ */
+
+/**
  * @typedef {{ score: number, positions?: number[] }} MatchResult
  * @typedef {(query: string, text: string) => MatchResult | null} Matcher
  * @typedef {{ id: string, timestamp: number }} HistoryEntry
@@ -324,9 +346,83 @@ export function formatGamepadParts(binding) {
   })
 }
 
+const PAD_AXES = ['lx', 'ly', 'rx', 'ry', 'lt', 'rt']
+/** @type {Record<string, string>} */
+const AXIS_GLYPHS = {
+  'mouse:x': 'Mouse ↔', 'mouse:y': 'Mouse ↕',
+  'pad:lx': 'Left stick ↔', 'pad:ly': 'Left stick ↕', 'pad:rx': 'Right stick ↔', 'pad:ry': 'Right stick ↕',
+  'pad:lt': 'LT', 'pad:rt': 'RT',
+}
+
+/**
+ * Where an axis's value comes from: mouse movement, a stick or trigger, or a pair of keys
+ * (the first pushes toward -1, the second toward 1). `invert` flips it.
+ * @typedef {{ kind: 'mouse' | 'pad', source: string, invert: boolean }
+ *   | { kind: 'keys', neg: ParsedKey, pos: ParsedKey, invert: boolean }} ParsedAxis
+ */
+
+/**
+ * Parse an axis binding: "mouse:x", "pad:rx", "keys:a/d", with a leading "-" to invert
+ * @param {string} binding
+ * @returns {ParsedAxis}
+ * @throws {Error} if the binding is invalid
+ */
+function parseAxis(binding) {
+  if (!binding || typeof binding !== 'string') {
+    throw new Error(`Invalid axis binding: ${binding}`)
+  }
+  let body = binding.trim().toLowerCase()
+  const invert = body.startsWith('-')
+  if (invert) body = body.slice(1)
+  const colon = body.indexOf(':')
+  const kind = body.slice(0, colon)
+  const rest = body.slice(colon + 1)
+  if (kind === 'mouse' && (rest === 'x' || rest === 'y')) return { kind, source: rest, invert }
+  if (kind === 'pad' && PAD_AXES.includes(rest)) return { kind, source: rest, invert }
+  if (kind === 'keys') {
+    const [neg, pos, ...extra] = rest.split('/')
+    if (neg && pos && extra.length === 0) {
+      const parsedNeg = parseKey(neg)
+      const parsedPos = parseKey(pos)
+      if (parsedNeg.release || parsedPos.release) throw new Error(`Axis keys have no release: "${binding}"`)
+      return { kind, neg: { ...parsedNeg, mods: NO_MODS }, pos: { ...parsedPos, mods: NO_MODS }, invert }
+    }
+  }
+  throw new Error(`Unknown axis "${binding}". Valid: mouse:x, mouse:y, pad:${PAD_AXES.join(', pad:')}, keys:<key>/<key>, each with an optional leading "-" to invert`)
+}
+
+/**
+ * Normalized form of an axis binding, without its inversion
+ * @param {ParsedAxis} parsed
+ * @returns {string}
+ */
+function axisToLookup(parsed) {
+  if (parsed.kind === 'keys') return `keys:${keyToLookup(parsed.neg)}/${keyToLookup(parsed.pos)}`
+  return `${parsed.kind}:${parsed.source}`
+}
+
+/**
+ * Format an axis binding into display parts (e.g. "-mouse:y" -> ["Mouse ↕", "Inverted"])
+ * @param {string} binding
+ * @returns {string[]}
+ */
+export function formatAxisParts(binding) {
+  let parsed
+  try {
+    parsed = parseAxis(binding)
+  } catch {
+    return [binding]
+  }
+  const parts = parsed.kind === 'keys'
+    ? [...formatKeyParts(keyToLookup(parsed.neg)), '/', ...formatKeyParts(keyToLookup(parsed.pos))]
+    : [AXIS_GLYPHS[axisToLookup(parsed)] ?? binding]
+  if (parsed.invert) parts.push('Inverted')
+  return parts
+}
+
 /**
  * The kinds of binding a command has, and how each is normalized and shown
- * @typedef {'keys' | 'mouse' | 'gamepad'} BindingType
+ * @typedef {'keys' | 'mouse' | 'gamepad' | 'axes'} BindingType
  */
 
 /**
@@ -339,6 +435,7 @@ export function formatGamepadParts(binding) {
 function bindingLookup(type, binding) {
   if (type === 'keys') return keyToLookup(parseKey(binding))
   if (type === 'mouse') return mouseToLookup(parseMouse(binding))
+  if (type === 'axes') return axisToLookup(parseAxis(binding))
   return gamepadToLookup(parseGamepad(binding))
 }
 
@@ -350,6 +447,7 @@ function bindingLookup(type, binding) {
 function formatBindingParts(type, binding) {
   if (type === 'keys') return formatKeyParts(binding)
   if (type === 'mouse') return formatMouseParts(binding)
+  if (type === 'axes') return formatAxisParts(binding)
   return formatGamepadParts(binding)
 }
 
@@ -571,6 +669,7 @@ function isActive(command, context) {
  * @property {{ step?: number, idle?: number }} [wheel] - Scroll bindings: a command runs once per `step`
  *   pixels scrolled (default 50, about one mouse-wheel notch; a trackpad's small deltas add up to it),
  *   and a pause of `idle` ms (default 200) starts a new gesture.
+ * @property {AxisDef[]} [axes] - Continuous inputs, read with `axis(id)` on what keybinds() returns
  */
 
 /**
@@ -636,7 +735,8 @@ function wheelDistance(event) {
  *   hasSelection: selectedId() !== null,
  *   isEditing: editingId() !== null
  * }))
- * @returns {(() => void) & { held: (id: string) => boolean }} Cleanup function, with `held(id)`: whether a command is held right now
+ * @returns {(() => void) & { held: (id: string) => boolean, axis: (id: string) => AxisValue }} Cleanup function, with
+ *   `held(id)`: whether a command is held right now, and `axis(id)`: an axis's value
  */
 export function keybinds(commands, getContext = () => ({}), options = {}) {
   const { target = window, onExecute, capture = false } = options
@@ -644,6 +744,23 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 
   // Build lookup tables for O(1) dispatch
   const lookup = buildLookupTables(commands)
+
+  /** @type {Map<string, { def: AxisDef, sources: ParsedAxis[] }>} */
+  const axisDefs = new Map()
+  for (const def of options.axes ?? []) {
+    try {
+      axisDefs.set(def.id, { def, sources: def.axes.map(parseAxis) })
+    } catch (e) {
+      throw new Error(`Axis "${def.id}": ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+  /** Keys down right now, by their unmodified lookups, for axes bound to keys */
+  /** @type {Map<string, string[]>} */
+  const downKeys = new Map()
+  // Mouse movement so far; each axis remembers where it was when it was last read
+  const mouseTotal = { x: 0, y: 0 }
+  /** @type {Map<string, { x: number, y: number }>} */
+  const mouseRead = new Map()
 
   /**
    * @param {Command} cmd
@@ -751,6 +868,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
                     (tgt instanceof HTMLElement && tgt.isContentEditable)
 
     const id = event.code || event.key
+    if (!inInput) downKeys.set(id, eventToKeyLookups(event, ''))
     let press = keyPresses.get(id)
     if (!press || !event.repeat) {
       press = { mods: eventMods(event), fired: new Set(), key: event.key, code: event.code }
@@ -776,6 +894,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   function handleKeyUp(e) {
     const event = /** @type {KeyboardEvent} */ (e)
     const id = event.code || event.key
+    downKeys.delete(id)
     const press = keyPresses.get(id)
     if (!press) return
     keyPresses.delete(id)
@@ -794,6 +913,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
   // every held key is released when focus goes. Coming back with it still down, its
   // auto-repeat starts a new press.
   function handleBlur() {
+    downKeys.clear()
     const presses = [...keyPresses.values()]
     keyPresses.clear()
     for (const press of presses) {
@@ -825,7 +945,60 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
 
   /** @param {Event} e */
   function handleMouseMove(e) {
-    if (mousePresses.size > 0) reconcileButtons(/** @type {MouseEvent} */ (e))
+    const event = /** @type {MouseEvent} */ (e)
+    if (mousePresses.size > 0) reconcileButtons(event)
+    mouseTotal.x += event.movementX ?? 0
+    mouseTotal.y += event.movementY ?? 0
+  }
+
+  const DEADZONE = 0.15
+
+  /**
+   * A stick or trigger, summed over every connected pad. Sticks ignore small drift around the middle
+   * @param {string} source
+   */
+  function padAxis(source) {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return 0
+    let sum = 0
+    for (const pad of navigator.getGamepads()) {
+      if (!pad) continue
+      if (source === 'lt' || source === 'rt') {
+        sum += pad.buttons[source === 'lt' ? 6 : 7]?.value ?? 0
+        continue
+      }
+      const v = pad.axes[PAD_AXES.indexOf(source)] ?? 0
+      if (Math.abs(v) > DEADZONE) sum += Math.sign(v) * (Math.abs(v) - DEADZONE) / (1 - DEADZONE)
+    }
+    return sum
+  }
+
+  /** @param {ParsedKey} key */
+  const keyDown = (key) => {
+    const l = keyToLookup(key)
+    for (const lookups of downKeys.values()) if (lookups.includes(l)) return true
+    return false
+  }
+
+  /**
+   * An axis's value right now. Reading it takes the mouse movement since its last read
+   * @param {string} id
+   * @returns {AxisValue}
+   */
+  function axis(id) {
+    const entry = axisDefs.get(id)
+    const last = mouseRead.get(id) ?? { x: 0, y: 0 }
+    mouseRead.set(id, { ...mouseTotal })
+    if (!entry || !isActive(/** @type {Command} */ (/** @type {unknown} */ (entry.def)), getContext())) return { position: 0, delta: 0 }
+    if (typeof document !== 'undefined' && document.querySelector(OVERLAYS)) return { position: 0, delta: 0 }
+    let position = 0
+    let delta = 0
+    for (const src of entry.sources) {
+      const sign = src.invert ? -1 : 1
+      if (src.kind === 'mouse') delta += sign * (src.source === 'x' ? mouseTotal.x - last.x : mouseTotal.y - last.y)
+      else if (src.kind === 'pad') position += sign * padAxis(src.source)
+      else if (src.kind === 'keys') position += sign * ((keyDown(src.pos) ? 1 : 0) - (keyDown(src.neg) ? 1 : 0))
+    }
+    return { position: Math.max(-1, Math.min(1, position)), delta }
   }
 
   /** @param {Event} e */
@@ -1048,7 +1221,7 @@ export function keybinds(commands, getContext = () => ({}), options = {}) {
     keyPresses.clear()
     mousePresses.clear()
     swallowAux.clear()
-  }, { held })
+  }, { held, axis })
 }
 
 /**
@@ -1339,6 +1512,7 @@ function formatWithRelease(binding, formatPart) {
  * @property {string[] | undefined} [keys] - Default keyboard triggers
  * @property {string[] | undefined} [mouse] - Default mouse triggers
  * @property {string[] | undefined} [gamepad] - Default gamepad button triggers
+ * @property {string[] | undefined} [axes] - Default sources, for an axis (see {@link AxisDef})
  * @property {boolean | undefined} [hidden] - Hide from search/settings
  * @property {string | string[] | undefined} [menu] - Context menu tag(s)
  */
@@ -1358,7 +1532,7 @@ export function defineSchema(schema) {
 }
 
 /**
- * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[] }>} BindingOverrides
+ * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[], axes?: string[] }>} BindingOverrides
  */
 
 /**
@@ -1378,6 +1552,7 @@ export function mergeBindings(schema, overrides) {
           keys: override.keys ?? binding.keys,
           mouse: override.mouse ?? binding.mouse,
           gamepad: override.gamepad ?? binding.gamepad,
+          axes: override.axes ?? binding.axes,
         }
       : binding
   }
@@ -2655,6 +2830,8 @@ export class KeybindSettings extends HTMLElement {
     /** Press-time binding of the input currently held while recording a release */
     /** @type {{ kind: 'key' | 'mouse' | 'gamepad', id: string, binding: string } | null} */
     this._heldPress = null
+    /** @type {(() => void) | null} */
+    this._recordAxisCleanup = null
     /** Frame of the gamepad poll while recording a gamepad button */
     /** @type {number | null} */
     this._recordPadFrame = null
@@ -2756,23 +2933,24 @@ export class KeybindSettings extends HTMLElement {
   /**
    * Get the effective bindings for a command (overrides merged with schema)
    * @param {string} commandId
-   * @returns {{ keys: string[], mouse: string[], gamepad: string[] }}
+   * @returns {{ keys: string[], mouse: string[], gamepad: string[], axes: string[] }}
    */
   _getBindings(commandId) {
-    if (!this._store) return { keys: [], mouse: [], gamepad: [] }
+    if (!this._store) return { keys: [], mouse: [], gamepad: [], axes: [] }
     const merged = this._store.get()
     const binding = merged[commandId]
     return {
       keys: binding?.keys ? [...binding.keys] : [],
       mouse: binding?.mouse ? [...binding.mouse] : [],
       gamepad: binding?.gamepad ? [...binding.gamepad] : [],
+      axes: binding?.axes ? [...binding.axes] : [],
     }
   }
 
   /**
    * Save binding changes, cleaning up overrides that match defaults
    * @param {string} commandId
-   * @param {{ keys: string[], mouse: string[], gamepad: string[] }} newBindings
+   * @param {{ keys: string[], mouse: string[], gamepad: string[], axes: string[] }} newBindings
    */
   _saveBindings(commandId, newBindings) {
     if (!this._store) return
@@ -2786,8 +2964,9 @@ export class KeybindSettings extends HTMLElement {
     const keysMatch = arraysEqual(newBindings.keys, schemaDef.keys || [])
     const mouseMatch = arraysEqual(newBindings.mouse, schemaDef.mouse || [])
     const gamepadMatch = arraysEqual(newBindings.gamepad, schemaDef.gamepad || [])
+    const axesMatch = arraysEqual(newBindings.axes, schemaDef.axes || [])
 
-    if (keysMatch && mouseMatch && gamepadMatch) {
+    if (keysMatch && mouseMatch && gamepadMatch && axesMatch) {
       // Matches defaults — remove override entry
       delete overrides[commandId]
     } else {
@@ -2795,11 +2974,12 @@ export class KeybindSettings extends HTMLElement {
       if (!keysMatch) overrides[commandId].keys = newBindings.keys
       if (!mouseMatch) overrides[commandId].mouse = newBindings.mouse
       if (!gamepadMatch) overrides[commandId].gamepad = newBindings.gamepad
+      if (!axesMatch) overrides[commandId].axes = newBindings.axes
     }
 
     this._store.save(overrides)
     this.dispatchEvent(new CustomEvent('change', {
-      detail: { commandId, keys: newBindings.keys, mouse: newBindings.mouse, gamepad: newBindings.gamepad }
+      detail: { commandId, keys: newBindings.keys, mouse: newBindings.mouse, gamepad: newBindings.gamepad, axes: newBindings.axes }
     }))
   }
 
@@ -2915,8 +3095,61 @@ export class KeybindSettings extends HTMLElement {
     window.addEventListener('mouseup', mouseUpHandler, true)
     window.addEventListener('wheel', wheelHandler, { capture: true })
     if (type === 'gamepad') this._recordGamepad()
+    if (type === 'axes') this._recordAxis()
 
     this._render()
+  }
+
+  // An axis is recorded from whichever comes first: enough mouse movement along one direction, a
+  // stick or trigger pushed well past its rest, or two keys (toward -1, then toward 1)
+  _recordAxis() {
+    const moved = { x: 0, y: 0 }
+    /** @type {string | null} */
+    let firstKey = null
+    /** @param {Event} e */
+    const onMove = (e) => {
+      const event = /** @type {MouseEvent} */ (e)
+      moved.x += Math.abs(event.movementX ?? 0)
+      moved.y += Math.abs(event.movementY ?? 0)
+      if (Math.max(moved.x, moved.y) > 80) this._handleRecordedBinding(moved.x >= moved.y ? 'mouse:x' : 'mouse:y')
+    }
+    /** @param {Event} e */
+    const onKey = (e) => {
+      const event = /** @type {KeyboardEvent} */ (e)
+      if (event.key === 'Escape' || event.repeat) return
+      const binding = eventToBindingString(event)
+      if (!binding) return
+      event.preventDefault()
+      event.stopPropagation()
+      const key = binding.slice(binding.lastIndexOf('+') + 1)
+      if (firstKey === null) firstKey = key
+      else if (key !== firstKey) this._handleRecordedBinding(`keys:${firstKey}/${key}`)
+    }
+    window.addEventListener('mousemove', onMove, true)
+    window.addEventListener('keydown', onKey, true)
+    this._recordAxisCleanup = () => {
+      window.removeEventListener('mousemove', onMove, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+    /** @type {Map<number, number[]>} */
+    const rest = new Map()
+    const read = () => {
+      this._recordPadFrame = null
+      if (this._recording?.type !== 'axes') return
+      for (const pad of navigator.getGamepads?.() ?? []) {
+        if (!pad) continue
+        const now = [...pad.axes.slice(0, 4), pad.buttons[6]?.value ?? 0, pad.buttons[7]?.value ?? 0]
+        const was = rest.get(pad.index)
+        if (!was) {
+          rest.set(pad.index, now)
+          continue
+        }
+        const i = now.findIndex((v, j) => Math.abs(v - (was[j] ?? 0)) > 0.6)
+        if (i !== -1) return this._handleRecordedBinding(`pad:${PAD_AXES[i]}`)
+      }
+      this._recordPadFrame = requestAnimationFrame(read)
+    }
+    if (typeof navigator !== 'undefined' && 'getGamepads' in navigator) this._recordPadFrame = requestAnimationFrame(read)
   }
 
   // Gamepads have no events, so recording one reads every pad each frame. Buttons already down
@@ -2951,6 +3184,8 @@ export class KeybindSettings extends HTMLElement {
   }
 
   _stopRecording() {
+    this._recordAxisCleanup?.()
+    this._recordAxisCleanup = null
     if (this._recordPadFrame !== null) {
       cancelAnimationFrame(this._recordPadFrame)
       this._recordPadFrame = null
@@ -3031,6 +3266,7 @@ export class KeybindSettings extends HTMLElement {
 
   /** @returns {string} */
   _recordingPrompt() {
+    if (this._recording?.type === 'axes') return 'Move the mouse, tilt a stick, or press two keys...'
     if (this._recording?.type === 'gamepad') {
       return this._recordRelease ? 'Press and release a gamepad button...' : 'Press a gamepad button...'
     }
@@ -3202,8 +3438,13 @@ export class KeybindSettings extends HTMLElement {
         bindingsEl.className = 'settings__item-bindings'
         bindingsEl.setAttribute('part', 'item-bindings')
 
+        const isAxis = Array.isArray(schema[cmd.id]?.axes)
+        for (let i = 0; i < (isAxis ? bindings?.axes?.length ?? 0 : 0); i++) {
+          bindingsEl.appendChild(this._renderBinding(cmd.id, 'axes', i, /** @type {string} */ (bindings?.axes?.[i])))
+        }
+
         // Render key bindings
-        if (bindings?.keys) {
+        if (!isAxis && bindings?.keys) {
           for (let i = 0; i < bindings.keys.length; i++) {
             const key = /** @type {string} */ (bindings.keys[i])
             bindingsEl.appendChild(this._renderBinding(cmd.id, 'keys', i, key))
@@ -3212,7 +3453,7 @@ export class KeybindSettings extends HTMLElement {
 
         // Render mouse and gamepad bindings
         for (const type of /** @type {const} */ (['mouse', 'gamepad'])) {
-          const list = bindings?.[type] ?? []
+          const list = isAxis ? [] : bindings?.[type] ?? []
           for (let i = 0; i < list.length; i++) {
             bindingsEl.appendChild(this._renderBinding(cmd.id, type, i, /** @type {string} */ (list[i])))
           }
@@ -3232,7 +3473,7 @@ export class KeybindSettings extends HTMLElement {
           recordingText.setAttribute('part', 'recording-overlay')
           recordingText.textContent = this._recordingPrompt()
           overlay.appendChild(recordingText)
-          overlay.appendChild(this._renderReleaseToggle())
+          if (this._recording?.type !== 'axes') overlay.appendChild(this._renderReleaseToggle())
           bindingsEl.appendChild(overlay)
 
           // Show conflict if any
@@ -3241,8 +3482,20 @@ export class KeybindSettings extends HTMLElement {
           }
         }
 
+        if (!this._recording && isAxis) {
+          const addAxisBtn = document.createElement('button')
+          addAxisBtn.setAttribute('part', 'add-axis')
+          addAxisBtn.textContent = '+ Axis'
+          addAxisBtn.addEventListener('click', () => this._startRecording(cmd.id, 'axes', null))
+          const addBtn = document.createElement('span')
+          addBtn.className = 'settings__item-add'
+          addBtn.setAttribute('part', 'item-add')
+          addBtn.appendChild(addAxisBtn)
+          bindingsEl.appendChild(addBtn)
+        }
+
         // Add button (dropdown for key/mouse)
-        if (!this._recording) {
+        if (!this._recording && !isAxis) {
           const addBtn = document.createElement('span')
           addBtn.className = 'settings__item-add'
           addBtn.setAttribute('part', 'item-add')
@@ -3311,7 +3564,7 @@ export class KeybindSettings extends HTMLElement {
       overlay.textContent = this._recordingPrompt()
       if (!this._conflict?.flip) {
         wrapper.appendChild(overlay)
-        wrapper.appendChild(this._renderReleaseToggle())
+        if (type !== 'axes') wrapper.appendChild(this._renderReleaseToggle())
       }
 
       if (this._conflict) {
@@ -3340,8 +3593,22 @@ export class KeybindSettings extends HTMLElement {
     keysContainer.addEventListener('click', () => this._startRecording(commandId, type, index))
     binding.appendChild(keysContainer)
 
+    if (type === 'axes') {
+      const inverted = bindingStr.trim().startsWith('-')
+      const invertBtn = document.createElement('button')
+      invertBtn.className = 'settings__binding-release'
+      invertBtn.setAttribute('part', inverted ? 'binding-invert binding-invert-on' : 'binding-invert')
+      invertBtn.setAttribute('aria-pressed', String(inverted))
+      invertBtn.textContent = 'Invert'
+      invertBtn.addEventListener('click', () => {
+        const flipped = inverted ? bindingStr.trim().slice(1) : `-${bindingStr.trim()}`
+        this._applyBinding(commandId, type, index, flipped)
+      })
+      binding.appendChild(invertBtn)
+    }
+
     const isRelease = splitRelease(bindingStr.toLowerCase()).release
-    if (isRelease || !/(^|\+)scroll(up|down|left|right)$/i.test(bindingStr.trim())) {
+    if (type !== 'axes' && (isRelease || !/(^|\+)scroll(up|down|left|right)$/i.test(bindingStr.trim()))) {
       const releaseBtn = document.createElement('button')
       releaseBtn.className = 'settings__binding-release'
       releaseBtn.setAttribute('part', isRelease ? 'binding-release binding-release-on' : 'binding-release')
@@ -4737,6 +5004,10 @@ export class CommandHub extends EventTarget {
     this._adapt = options.adapt ?? ((def) => /** @type {Command} */ (/** @type {unknown} */ (def)))
     /** @type {{ owner: string, get: () => D[] }[]} */
     this._sources = []
+    /** @type {{ owner: string, get: () => AxisDef[] }[]} */
+    this._axisSources = []
+    /** @type {Map<string, AxisDef>} */
+    this._axes = new Map()
     /** @type {(() => Partial<C>)[]} */
     this._contexts = []
     /** @type {Map<string, D>} */
@@ -4796,6 +5067,17 @@ export class CommandHub extends EventTarget {
   }
 
   /**
+   * Replace the axes owned by `owner` (null removes them). Takes effect on refresh(). Axes are
+   * rebindable in the settings panel like commands, and read with axis(id).
+   * @param {string} owner
+   * @param {(() => AxisDef[]) | null} get
+   */
+  setAxes(owner, get) {
+    this._axisSources = this._axisSources.filter((s) => s.owner !== owner)
+    if (get) this._axisSources.push({ owner, get })
+  }
+
+  /**
    * Add to the context that `when` conditions see. Returns a function that removes it again.
    * @param {() => Partial<C>} get
    * @returns {() => void}
@@ -4830,6 +5112,25 @@ export class CommandHub extends EventTarget {
    */
   held(id) {
     return this._unbind?.held(id) ?? false
+  }
+
+  /**
+   * An axis's value right now; reading it takes the mouse movement since its last read.
+   * @param {string} id
+   * @returns {AxisValue}
+   */
+  axis(id) {
+    return this._unbind?.axis(id) ?? { position: 0, delta: 0 }
+  }
+
+  /**
+   * An axis's sources right now, as shown to people (e.g. "Mouse ↔", "A / D").
+   * @param {string} id
+   * @returns {string[]}
+   */
+  axesFor(id) {
+    const bound = this._store?.get()[id]?.axes ?? this._axes.get(id)?.axes ?? []
+    return bound.map((a) => formatAxisParts(a).join(' '))
   }
 
   /** @returns {D[]} */
@@ -4879,6 +5180,21 @@ export class CommandHub extends EventTarget {
     for (const d of this._defs.values()) {
       schema[d.id] = { label: d.label, category: d.category, description: d.description, keys: d.keys ?? [], mouse: d.mouse, gamepad: d.gamepad, hidden: d.hidden }
     }
+    this._axes.clear()
+    for (const src of this._axisSources) {
+      /** @type {AxisDef[]} */
+      let list = []
+      try {
+        list = src.get()
+      } catch (e) {
+        console.error(`keybinds: axis source "${src.owner}" threw`, e)
+      }
+      for (const a of list) {
+        if (this._axes.has(a.id) || this._defs.has(a.id)) continue
+        this._axes.set(a.id, a)
+        schema[a.id] = { label: a.label, category: a.category, description: a.description, axes: a.axes, hidden: a.hidden }
+      }
+    }
     this._store?.removeEventListener('change', this._storeListener)
     this._store?.dispose()
     this._store = new BindingsStore(schema, this._storage(this._scope))
@@ -4904,7 +5220,19 @@ export class CommandHub extends EventTarget {
 
     this._unbind?.()
     const live = [...this._live.values()]
-    this._unbind = keybinds(live.filter((c) => c.keys?.length || c.mouse?.length || c.gamepad?.length), () => /** @type {Record<string, unknown>} */ (this.context()), this._listen)
+    /** @type {AxisDef[]} */
+    const axes = []
+    for (const a of this._axes.values()) {
+      const def = { ...a, axes: bound[a.id]?.axes ?? a.axes }
+      try {
+        def.axes.forEach(parseAxis)
+      } catch (e) {
+        console.error(`keybinds: dropping the sources of axis "${a.id}"`, e)
+        def.axes = []
+      }
+      axes.push(def)
+    }
+    this._unbind = keybinds(live.filter((c) => c.keys?.length || c.mouse?.length || c.gamepad?.length), () => /** @type {Record<string, unknown>} */ (this.context()), { ...this._listen, axes })
     const visible = live.filter((c) => !c.hidden)
     if (this.palette) this.palette.commands = visible
     if (this.cheatsheet) this.cheatsheet.commands = visible

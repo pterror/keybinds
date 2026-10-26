@@ -16,3 +16,5 @@
 - [x] A key held while the window lost focus never got its release (the keyup goes to whatever has focus), so holds stayed open. Held keys are now released on blur; held mouse buttons are checked against `MouseEvent.buttons` on the next mouse event instead, since they may still be down.
 - [x] Held controls (a game's movement) had to be pieced together from press and release bindings. `keybinds()` now returns its cleanup with `held(id)`, and `CommandHub` has `held(id)`.
 - [x] Gamepad buttons as triggers: `gamepad: ['a', 'rt:up']` on commands and schemas, rebindable in `<keybinds-settings>` (shown while a pad is connected), listed in the cheatsheet, `hub.gamepadFor(id)`. Pads are read each frame only while something binds a gamepad button and a pad is connected.
+- [x] Axes: continuous inputs read every frame (`keybinds(..., { axes })`, `kb.axis(id)` → `{ position, delta }`), from mouse movement, sticks, triggers or key pairs, with a leading `-` to invert. Rebindable in the settings panel; `hub.setAxes`, `hub.axis`, `hub.axesFor`.
+- [ ] The cheatsheet and palette don't list axes.

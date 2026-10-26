@@ -97,6 +97,35 @@ function frame() {
 }
 ```
 
+## Axes
+
+Looking around or steering isn't a command run per key press; it's a value read every frame. An axis is that value, from any of these sources:
+
+| Source | |
+|--------|---|
+| `mouse:x`, `mouse:y` | Mouse movement |
+| `pad:lx`, `pad:ly`, `pad:rx`, `pad:ry` | Sticks (small drift around the middle is ignored) |
+| `pad:lt`, `pad:rt` | Triggers, 0 to 1 |
+| `keys:a/d` | Two keys: the first toward -1, the second toward 1 |
+
+A leading `-` inverts a source (`-mouse:y`). Pass axes as an option and read them with `axis(id)`:
+
+```js
+const kb = keybinds(commands, getContext, { axes: [
+  { id: 'look-x', label: 'Look left/right', axes: ['mouse:x', 'pad:rx'] },
+  { id: 'strafe', label: 'Strafe', axes: ['keys:a/d', 'pad:lx'] },
+] })
+
+function frame(dt) {
+  const look = kb.axis('look-x')
+  yaw += look.delta * mouseSensitivity + look.position * turnSpeed * dt
+}
+```
+
+`axis(id)` returns `{ position, delta }`. `position` is where sticks, triggers and keys are, -1 to 1. `delta` is mouse movement in pixels since that axis was last read. They're separate because they're different kinds of number: a position is scaled by a speed and the frame's time, a delta by a sensitivity. An axis whose `when` is false, or read while the palette or settings are open, reads zero.
+
+With `CommandHub`, `hub.setAxes(owner, () => axes)` adds them; they're rebindable in the settings panel (where each source has an Invert switch) and read with `hub.axis(id)`.
+
 ## Ignoring Other Modifiers
 
 By default a binding needs exactly its modifiers: `w` doesn't fire while Shift is held. A game moving on WASD wants the opposite, so a command with `anyModifiers: true` matches whatever else is held. A binding's own modifiers are still required (`shift+x` still needs Shift), and a command bound exactly to the keys pressed comes first.

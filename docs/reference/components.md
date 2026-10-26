@@ -174,6 +174,8 @@ Custom element: `<keybinds-settings>`
 | `add-key` | Add Key button |
 | `add-mouse` | Add Mouse button |
 | `add-gamepad` | Add Gamepad button (shown while a gamepad is connected) |
+| `add-axis` | Add a source to an axis |
+| `binding-invert` | An axis source's Invert switch (`binding-invert-on` when inverted) |
 | `recording-overlay` | Recording prompt text |
 | `recording-release` | Release toggle in the recording prompt (`recording-release-on` while on) |
 | `conflict` | Conflict warning |
@@ -317,6 +319,16 @@ function formatGamepadParts(binding: string): string[]
 formatGamepadParts('rt')     // ["RT"]
 formatGamepadParts('south:up') // ["A", "Release"]
 formatGamepadParts('up')     // ["D-pad ↑"]
+```
+
+---
+
+## formatAxisParts(binding)
+
+```js
+formatAxisParts('mouse:x')  // ["Mouse ↔"]
+formatAxisParts('-pad:ry')  // ["Right stick ↕", "Inverted"]
+formatAxisParts('keys:a/d') // ["A", "/", "D"]
 ```
 
 ---
