@@ -1,7 +1,7 @@
-export type Input = import('../core.js').Input;
+export type Input = import('../core.js').InputUI;
 export type BindingSchema = import('../core.js').BindingSchema;
 export type AnyStore = import('../store.js').BindingsStore<any>;
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 /** @typedef {import('../core.js').BindingSchema} BindingSchema */
 /** @typedef {import('../store.js').BindingsStore<any>} AnyStore */
 /**
@@ -50,8 +50,8 @@ export declare class KeybindSettings extends HTMLElement {
     connectedCallback(): void;
     get store(): import("../store.js").BindingsStore<any> | null;
     set store(val: import("../store.js").BindingsStore<any> | null);
-    get inputs(): import("../core.js").Input[];
-    set inputs(val: import("../core.js").Input[]);
+    get inputs(): import("../core.js").InputUI[];
+    set inputs(val: import("../core.js").InputUI[]);
     get open(): boolean;
     set open(val: boolean);
     /**

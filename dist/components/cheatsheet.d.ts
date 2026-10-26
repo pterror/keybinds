@@ -1,7 +1,7 @@
 export type Command = import('../core.js').Command;
-export type Input = import('../core.js').Input;
+export type Input = import('../core.js').InputUI;
 /** @typedef {import('../core.js').Command} Command */
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 /**
  * <keybinds-cheatsheet> - Grouped display of available bindings
  *

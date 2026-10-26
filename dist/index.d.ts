@@ -12,10 +12,14 @@ import { BasicContextMenu } from './components/basic-context-menu.js';
 import { ContextMenu } from './components/context-menu.js';
 import { RadialMenu } from './components/radial-menu.js';
 export { keybinds, validateCommands, executeCommand, findConflict, bindingParts, isActive, } from './core.js';
-export { keys, parseKey, formatKeyParts, eventToBindingString } from './keys.js';
-export { mouse, formatMouseParts, eventToMouseBindingString, mouseMatches } from './mouse.js';
-export { gamepad, formatGamepadParts } from './gamepad.js';
-export { axes, formatAxisParts } from './axes.js';
+export { keys, parseKey } from './keys.js';
+export { keysUI, formatKeyParts, eventToBindingString } from './keys-ui.js';
+export { mouse, mouseMatches } from './mouse.js';
+export { mouseUI, formatMouseParts, eventToMouseBindingString } from './mouse-ui.js';
+export { gamepad } from './gamepad.js';
+export { gamepadUI, formatGamepadParts } from './gamepad-ui.js';
+export { axes } from './axes.js';
+export { axesUI, formatAxisParts } from './axes-ui.js';
 export { matchCommands, searchCommands, defaultScorer, groupByCategory, filterByMenu, simpleMatcher, fuzzyMatcher, } from './search.js';
 export { defineSchema, mergeBindings, fromBindings, listBindings, localStorageBindings, BindingsStore, } from './store.js';
 export { onModifierHold, onModifierTaps } from './modifiers.js';
@@ -26,6 +30,7 @@ export type Command = import('./core.js').Command;
 export type AxisDef = import('./core.js').AxisDef;
 export type AxisValue = import('./core.js').AxisValue;
 export type Input = import('./core.js').Input;
+export type InputUI = import('./core.js').InputUI;
 export type Dispatch = import('./core.js').Dispatch;
 export type Press = import('./core.js').Press;
 export type Modifiers = import('./core.js').Modifiers;
@@ -41,6 +46,7 @@ export type BindingsStorage = import('./store.js').BindingsStorage;
  * @typedef {import('./core.js').AxisDef} AxisDef
  * @typedef {import('./core.js').AxisValue} AxisValue
  * @typedef {import('./core.js').Input} Input
+ * @typedef {import('./core.js').InputUI} InputUI
  * @typedef {import('./core.js').Dispatch} Dispatch
  * @typedef {import('./core.js').Press} Press
  * @typedef {import('./core.js').Modifiers} Modifiers

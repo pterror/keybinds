@@ -1,9 +1,9 @@
 import { markKind, isActive, bindingParts } from '../core.js'
 import { filterByMenu } from '../search.js'
-import { keys } from '../keys.js'
+import { keysUI } from '../keys-ui.js'
 
 /** @typedef {import('../core.js').Command} Command */
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 
 /**
  * <keybinds-basic-context-menu> - Context menu driven by commands (no search, no limit)
@@ -48,7 +48,7 @@ export class BasicContextMenu extends HTMLElement {
   constructor() {
     super()
     /** How bindings are shown: an item shows its first. @type {Input[]} */
-    this.inputs = [keys()]
+    this.inputs = [keysUI()]
     /** @type {Command[]} */
     this._commands = []
     /** @type {Record<string, unknown>} */
@@ -145,7 +145,7 @@ export class BasicContextMenu extends HTMLElement {
   }
 
   connectedCallback() {
-    markKind(this, 'basic-context-menu')
+    markKind(this, 'basic-context-menu', true)
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
     }

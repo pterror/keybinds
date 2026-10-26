@@ -71,9 +71,13 @@ export type Dispatch = {
 };
 export type Input = {
     field: string;
-    label: string;
     axis?: boolean;
     parse: (binding: string) => ParsedBinding;
+    matches?: (cmd: Command, event: Event) => boolean;
+    listen: (d: Dispatch) => InputHandle;
+};
+export type InputUI = Input & {
+    label: string;
     format: (binding: string) => string[];
     release?: (binding: string) => boolean;
     invert?: boolean;
@@ -84,8 +88,6 @@ export type Input = {
         ignore: (e: Event) => boolean;
     }, done: (binding: string) => void) => () => void;
     prompt?: (release: boolean) => string;
-    matches?: (cmd: Command, event: Event) => boolean;
-    listen: (d: Dispatch) => InputHandle;
 };
 export type InputHandle = (() => void) & {
     axis?: (id: string) => AxisValue;
@@ -206,24 +208,33 @@ export type BindingOverrides = Record<string, {
  */
 /**
  * A kind of input. Each is a module (keys, mouse, gamepad, axes) whose factory returns one of
- * these; keybinds() listens with the ones it's given, and the settings panel, cheatsheet and
- * palette show and record bindings through them.
+ * these, and keybinds() listens with the ones it's given.
  * @typedef {Object} Input
  * @property {string} field - The command (or axis) field holding its bindings: "keys", "mouse", ...
- * @property {string} label - What one binding is called ("Key"), for "+ Key"
  * @property {boolean} [axis] - Its bindings are an axis's sources rather than a command's triggers
  * @property {(binding: string) => ParsedBinding} parse - Throws if the binding is invalid
- * @property {(binding: string) => string[]} format - Display parts
- * @property {(binding: string) => boolean} [release] - Whether a binding can be its release
- *   form (":up"); absent for inputs that have no releases
- * @property {boolean} [invert] - Bindings can be inverted with a leading "-"
- * @property {() => boolean} [available] - Whether it can be recorded right now (a pad is connected)
- * @property {(onChange: () => void) => () => void} [watch] - Follows `available` changing
- * @property {(options: { release: boolean, ignore: (e: Event) => boolean }, done: (binding: string) => void) => () => void} [record] -
- *   Records a binding from what's done next; returns a function that stops
- * @property {(release: boolean) => string} [prompt] - What to do to record one
  * @property {(cmd: Command, event: Event) => boolean} [matches] - Whether an event is one of the command's press bindings
  * @property {(d: Dispatch) => InputHandle} listen
+ */
+/**
+ * An input that can also be shown and recorded, for the settings panel, cheatsheet, palette and
+ * menus. Each input's UI half is its own module (keybinds/keys-ui, ...), so an app without them
+ * doesn't ship it.
+ * @typedef {Input & {
+ *   label: string,
+ *   format: (binding: string) => string[],
+ *   release?: (binding: string) => boolean,
+ *   invert?: boolean,
+ *   available?: () => boolean,
+ *   watch?: (onChange: () => void) => () => void,
+ *   record?: (options: { release: boolean, ignore: (e: Event) => boolean }, done: (binding: string) => void) => () => void,
+ *   prompt?: (release: boolean) => string,
+ * }} InputUI
+ * `label` is what one binding is called ("Key", for "+ Key"); `format` gives display parts;
+ * `release` says whether a binding can be its release form (":up"), absent for inputs with no
+ * releases; `invert`: bindings can be inverted with a leading "-"; `available` says whether it can
+ * be recorded now (a pad is connected) and `watch` follows that changing; `record` records a
+ * binding from what's done next and returns a function that stops; `prompt` says what to do.
  */
 /**
  * What an input's listen() returns: a function that stops it, which can also read axes
@@ -256,12 +267,13 @@ export type BindingOverrides = Record<string, {
  * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[], axes?: string[] }>} BindingOverrides
  */
 /**
- * Marks a component with its kind, so styles and overlay checks work whatever tag name it was
- * registered under.
+ * Marks a component with its kind, so styles work whatever tag name it was registered under, and
+ * whether it takes the keyboard while open
  * @param {HTMLElement} el
  * @param {string} kind
+ * @param {boolean} [modal]
  */
-export declare function markKind(el: HTMLElement, kind: string): void;
+export declare function markKind(el: HTMLElement, kind: string, modal?: boolean): void;
 export declare const isMac: boolean;
 /**
  * Parse modifiers from a binding string
@@ -339,7 +351,7 @@ export declare function isActive(command: {
     when?: ((ctx: Record<string, unknown>) => boolean) | undefined;
 }, context: Record<string, unknown>): boolean;
 /**
- * Whether an element is inside a component whose own keyboard handling takes over while it's open
+ * Whether an element is inside one whose own keyboard handling takes over while it's open
  * @param {Element | null} tgt
  * @returns {boolean}
  */
@@ -427,7 +439,7 @@ export declare function findConflict(schema: Schema, bindingStr: string, input: 
 /**
  * A command's bindings through each input, as display parts, in the order of `inputs`
  * @param {Command} cmd
- * @param {Input[]} inputs
+ * @param {InputUI[]} inputs
  * @returns {string[][]}
  */
-export declare function bindingParts(cmd: Command, inputs: Input[]): string[][];
+export declare function bindingParts(cmd: Command, inputs: InputUI[]): string[][];

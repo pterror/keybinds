@@ -1,11 +1,11 @@
 import { markKind, bindingParts } from '../core.js'
 import { searchCommands } from '../search.js'
-import { keys } from '../keys.js'
+import { keysUI } from '../keys-ui.js'
 
 /** @typedef {import('../core.js').Command} Command */
 /** @typedef {import('../core.js').Matcher} Matcher */
 /** @typedef {import('../core.js').ScoredCommand} ScoredCommand */
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 
 /**
  * <keybinds-command-palette> - Search-driven command execution
@@ -57,7 +57,7 @@ export class CommandPalette extends HTMLElement {
   constructor() {
     super()
     /** How bindings are shown: an item shows its first. @type {Input[]} */
-    this.inputs = [keys()]
+    this.inputs = [keysUI()]
     /** @type {Command[]} */
     this._commands = []
     /** @type {Record<string, unknown>} */
@@ -177,7 +177,7 @@ export class CommandPalette extends HTMLElement {
   }
 
   connectedCallback() {
-    markKind(this, 'command-palette')
+    markKind(this, 'command-palette', true)
     if (this.hasAttribute('auto-trigger')) {
       this._setupAutoTrigger(true)
     }

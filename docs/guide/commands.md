@@ -265,11 +265,11 @@ const store = new BindingsStore(schema, {
 When commands come from several parts of an app, and come and go with its state, `CommandHub` does all of the above in one place: it collects commands from every source, derives the schema from them, keeps each person's rebindings, listens for keys, and keeps the components and any command buttons up to date.
 
 ```js
-import { CommandHub, keys, mouse, CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu } from 'keybinds'
+import { CommandHub, keysUI, mouseUI, CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu } from 'keybinds'
 import 'keybinds/styles/palette.css'
 
 const hub = new CommandHub({
-  inputs: [keys(), mouse()],  // what it listens to, and what its components show and record
+  inputs: [keysUI(), mouseUI()],  // what it listens to; the UI halves, since its components show and record them
   components: [CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu],
   host: document.body,        // where the components go
   storageKey: 'myapp:keys',   // rebindings are kept under "myapp:keys:<scope>"; or pass
@@ -332,7 +332,7 @@ Each part is its own module, so a page loading keybinds straight from a CDN can 
 </script>
 <script type="module">
   import { CommandHub } from 'keybinds/hub.js'
-  import { keys } from 'keybinds/keys.js'
+  import { keysUI } from 'keybinds/keys-ui.js'
   import { KeybindSettings } from 'keybinds/components/settings.js'
 </script>
 ```

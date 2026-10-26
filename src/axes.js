@@ -1,23 +1,18 @@
 /**
  * Axes: continuous input read every frame, from mouse movement ("mouse:x"), sticks and triggers
- * ("pad:rx", "pad:lt") or a pair of keys ("keys:a/d"). A leading "-" inverts a source.
+ * ("pad:rx", "pad:lt") or a pair of keys ("keys:a/d"). A leading "-" inverts a source. Showing
+ * and recording them is keybinds/axes-ui.
  */
 
 import { NO_MODS, isActive, anyOverlayOpen, inInput } from './core.js'
-import { parseKey, keyToLookup, eventToKeyLookups, eventToBindingString, formatKeyParts } from './keys.js'
+import { parseKey, keyToLookup, eventToKeyLookups } from './keys.js'
 
 /** @typedef {import('./core.js').Input} Input */
 /** @typedef {import('./core.js').AxisDef} AxisDef */
 /** @typedef {import('./core.js').AxisValue} AxisValue */
 /** @typedef {import('./keys.js').ParsedKey} ParsedKey */
 
-const PAD_AXES = ['lx', 'ly', 'rx', 'ry', 'lt', 'rt']
-/** @type {Record<string, string>} */
-const AXIS_GLYPHS = {
-  'mouse:x': 'Mouse ↔', 'mouse:y': 'Mouse ↕',
-  'pad:lx': 'Left stick ↔', 'pad:ly': 'Left stick ↕', 'pad:rx': 'Right stick ↔', 'pad:ry': 'Right stick ↕',
-  'pad:lt': 'LT', 'pad:rt': 'RT',
-}
+export const PAD_AXES = ['lx', 'ly', 'rx', 'ry', 'lt', 'rt']
 const DEADZONE = 0.15
 
 /**
@@ -33,7 +28,7 @@ const DEADZONE = 0.15
  * @returns {ParsedAxis}
  * @throws {Error} if the binding is invalid
  */
-function parseAxis(binding) {
+export function parseAxis(binding) {
   if (!binding || typeof binding !== 'string') {
     throw new Error(`Invalid axis binding: ${binding}`)
   }
@@ -62,31 +57,12 @@ function parseAxis(binding) {
  * @param {ParsedAxis} parsed
  * @returns {string}
  */
-function axisToLookup(parsed) {
+export function axisToLookup(parsed) {
   if (parsed.kind === 'keys') return `keys:${keyToLookup(parsed.neg)}/${keyToLookup(parsed.pos)}`
   return `${parsed.kind}:${parsed.source}`
 }
 
-/**
- * Format an axis binding into display parts (e.g. "-mouse:y" -> ["Mouse ↕", "Inverted"])
- * @param {string} binding
- * @returns {string[]}
- */
-export function formatAxisParts(binding) {
-  let parsed
-  try {
-    parsed = parseAxis(binding)
-  } catch {
-    return [binding]
-  }
-  const parts = parsed.kind === 'keys'
-    ? [...formatKeyParts(keyToLookup(parsed.neg)), '/', ...formatKeyParts(keyToLookup(parsed.pos))]
-    : [AXIS_GLYPHS[axisToLookup(parsed)] ?? binding]
-  if (parsed.invert) parts.push('Inverted')
-  return parts
-}
-
-const hasPads = () => typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function'
+export const hasPads = () => typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function'
 
 /**
  * A stick or trigger, summed over every connected pad. Sticks ignore small drift around the middle
@@ -114,69 +90,10 @@ function padAxis(source) {
 export function axes() {
   return {
     field: 'axes',
-    label: 'Axis',
     axis: true,
-    invert: true,
     parse(binding) {
       return { lookup: axisToLookup(parseAxis(binding)), loose: '', mods: NO_MODS }
     },
-    format: formatAxisParts,
-    prompt: () => 'Move the mouse, tilt a stick, or press two keys...',
-
-    // Recorded from whichever comes first: enough mouse movement along one direction, a stick or
-    // trigger pushed well past its rest, or two keys (toward -1, then toward 1)
-    record(_options, done) {
-      const moved = { x: 0, y: 0 }
-      /** @type {string | null} */
-      let firstKey = null
-      /** @param {Event} e */
-      const onMove = (e) => {
-        const event = /** @type {MouseEvent} */ (e)
-        moved.x += Math.abs(event.movementX ?? 0)
-        moved.y += Math.abs(event.movementY ?? 0)
-        if (Math.max(moved.x, moved.y) > 80) done(moved.x >= moved.y ? 'mouse:x' : 'mouse:y')
-      }
-      /** @param {Event} e */
-      const onKey = (e) => {
-        const event = /** @type {KeyboardEvent} */ (e)
-        if (event.key === 'Escape' || event.repeat) return
-        const binding = eventToBindingString(event)
-        if (!binding) return
-        event.preventDefault()
-        event.stopPropagation()
-        const key = binding.slice(binding.lastIndexOf('+') + 1)
-        if (firstKey === null) firstKey = key
-        else if (key !== firstKey) done(`keys:${firstKey}/${key}`)
-      }
-      window.addEventListener('mousemove', onMove, true)
-      window.addEventListener('keydown', onKey, true)
-      /** @type {Map<number, number[]>} */
-      const rest = new Map()
-      /** @type {number | null} */
-      let frame = null
-      const read = () => {
-        frame = null
-        for (const pad of navigator.getGamepads()) {
-          if (!pad) continue
-          const now = [...pad.axes.slice(0, 4), pad.buttons[6]?.value ?? 0, pad.buttons[7]?.value ?? 0]
-          const was = rest.get(pad.index)
-          if (!was) {
-            rest.set(pad.index, now)
-            continue
-          }
-          const i = now.findIndex((v, j) => Math.abs(v - (was[j] ?? 0)) > 0.6)
-          if (i !== -1) return done(`pad:${PAD_AXES[i]}`)
-        }
-        frame = requestAnimationFrame(read)
-      }
-      if (hasPads()) frame = requestAnimationFrame(read)
-      return () => {
-        window.removeEventListener('mousemove', onMove, true)
-        window.removeEventListener('keydown', onKey, true)
-        if (frame !== null) cancelAnimationFrame(frame)
-      }
-    },
-
     listen(d) {
       /** @type {Map<string, { def: AxisDef, sources: ParsedAxis[] }>} */
       const defs = new Map()

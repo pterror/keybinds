@@ -24,7 +24,7 @@ Custom element: `<keybinds-command-palette>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `commands` | `Command[]` | Commands to display and execute |
-| `inputs` | `Input[]` | How bindings are shown: an item shows its first (default: keys only) |
+| `inputs` | `InputUI[]` | How bindings are shown: an item shows its first (default: keys only) |
 | `context` | `object` | Context for `when` evaluation |
 | `source` | `(query: string) => Command[] \| Promise<Command[]>` | Further commands for a typed query, merged with `commands` (same `id` keeps the one in `commands`); an answer for a query no longer typed is dropped |
 | `sourceDelay` | `number` | Milliseconds of typing pause before `source` is asked (default 200) |
@@ -87,7 +87,7 @@ Custom element: `<keybinds-cheatsheet>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `commands` | `Command[]` | Commands to display |
-| `inputs` | `Input[]` | Which bindings are shown (default: keys only) |
+| `inputs` | `InputUI[]` | Which bindings are shown (default: keys only) |
 | `context` | `object` | Context for `when` evaluation |
 | `open` | `boolean` | Visibility state |
 
@@ -133,7 +133,7 @@ Custom element: `<keybinds-settings>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `store` | `BindingsStore` | Reactive bindings store instance |
-| `inputs` | `Input[]` | Which bindings are shown and can be recorded (default: keys only) |
+| `inputs` | `InputUI[]` | Which bindings are shown and can be recorded (default: keys only) |
 | `open` | `boolean` | Visibility state |
 
 ### Attributes
@@ -199,7 +199,7 @@ Custom element: `<keybinds-basic-context-menu>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `commands` | `Command[]` | Commands to display and execute |
-| `inputs` | `Input[]` | How bindings are shown: an item shows its first (default: keys only) |
+| `inputs` | `InputUI[]` | How bindings are shown: an item shows its first (default: keys only) |
 | `context` | `object` | Context for `when` evaluation |
 | `menu` | `string` | Filter to commands with matching `menu` tag |
 | `position` | `{ x: number, y: number }` | Menu position in viewport coordinates |

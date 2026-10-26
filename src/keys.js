@@ -1,15 +1,12 @@
 /**
- * Keyboard input: bindings like "$mod+k", "Escape", "?" or "k:up".
+ * Keyboard input: bindings like "$mod+k", "Escape", "?" or "k:up". Showing and recording them is
+ * keybinds/keys-ui.
  */
 
-import {
-  RELEASE_SUFFIX, NO_MODS, splitRelease, parseMods, modsToPrefix, eventMods, eventModParts,
-  formatModPart, formatWithRelease, overlayOpen, inInput,
-} from './core.js'
+import { RELEASE_SUFFIX, NO_MODS, splitRelease, parseMods, modsToPrefix, eventMods, overlayOpen, inInput } from './core.js'
 
 /** @typedef {import('./core.js').Modifiers} Modifiers */
 /** @typedef {import('./core.js').Input} Input */
-/** @typedef {import('./core.js').Press} Press */
 
 /**
  * @typedef {Object} ParsedKey
@@ -19,7 +16,7 @@ import {
  */
 
 // Alias key names, resolved to the name a real key event reports
-const KEY_ALIASES = /** @type {Record<string, string>} */ ({
+export const KEY_ALIASES = /** @type {Record<string, string>} */ ({
   up: 'arrowup',
   down: 'arrowdown',
   left: 'arrowleft',
@@ -29,16 +26,9 @@ const KEY_ALIASES = /** @type {Record<string, string>} */ ({
 })
 
 // Punctuation keys, and the name of the physical key that types each on a US layout (event.code)
-const PUNCTUATION_CODES = /** @type {Record<string, string>} */ ({
+export const PUNCTUATION_CODES = /** @type {Record<string, string>} */ ({
   '[': 'bracketleft', ']': 'bracketright', '\\': 'backslash', ';': 'semicolon', "'": 'quote',
   ',': 'comma', '.': 'period', '/': 'slash', '`': 'backquote', '-': 'minus', '=': 'equal'
-})
-
-// How a physical key name is shown: the character it types on a US layout
-const CODE_GLYPHS = /** @type {Record<string, string>} */ ({
-  ...Object.fromEntries(Object.entries(PUNCTUATION_CODES).map(([ch, code]) => [code, ch])),
-  ...Object.fromEntries(Array.from({ length: 10 }, (_, d) => [`digit${d}`, String(d)])),
-  plus: '+'
 })
 
 /**
@@ -47,33 +37,20 @@ const CODE_GLYPHS = /** @type {Record<string, string>} */ ({
  * @param {string} key
  * @returns {boolean}
  */
-function isSymbolKey(key) {
+export function isSymbolKey(key) {
   return [...key].length === 1 && key.trim() !== '' && key.toLowerCase() === key.toUpperCase() && !/[0-9]/.test(key)
 }
 
+// Named keys; any single printable character can be bound too
+export const NAMED_KEY = /^(f([1-9]|1[0-2])|escape|enter|tab|space|backspace|delete|insert|home|end|page(up|down)|arrow(up|down|left|right)|bracket(left|right)|backslash|semicolon|quote|comma|period|slash|backquote|minus|equal|digit[0-9])$/
+
 /**
- * Any single printable character can be bound, in addition to the named keys.
  * @param {string} key
  * @returns {boolean}
  */
-function isValidKey(key) {
-  return VALID_KEYS.has(key) || ([...key].length === 1 && key.trim() !== '')
+export function isValidKey(key) {
+  return NAMED_KEY.test(key) || ([...key].length === 1 && key.trim() !== '')
 }
-
-// Valid key names (subset - common ones)
-const VALID_KEYS = new Set([
-  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-  'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12',
-  'escape', 'enter', 'tab', 'space', 'backspace', 'delete', 'insert',
-  'home', 'end', 'pageup', 'pagedown',
-  'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'up', 'down', 'left', 'right',
-  '[', ']', '\\', ';', "'", ',', '.', '/', '`', '-', '=',
-  'bracketleft', 'bracketright', 'backslash', 'semicolon', 'quote',
-  'comma', 'period', 'slash', 'backquote', 'minus', 'equal',
-  'digit0', 'digit1', 'digit2', 'digit3', 'digit4', 'digit5', 'digit6', 'digit7', 'digit8', 'digit9'
-])
 
 /**
  * Parse a key string like "Ctrl+Shift+K" or "K:up" into normalized form
@@ -145,114 +122,15 @@ export function eventToKeyLookups(event, prefix = modsToPrefix(eventMods(event))
 }
 
 /**
- * Format a single key part for display
- * @param {string} part
- * @returns {string}
- */
-function formatKeyPart(part) {
-  const p = part.trim().toLowerCase()
-  const mod = formatModPart(p)
-  if (mod) return mod
-  if (p === 'backspace') return '⌫'
-  if (p === 'delete') return '⌦'
-  if (p === 'escape' || p === 'esc') return 'Esc'
-  if (p === 'enter') return '↵'
-  if (p === 'space') return 'Space'
-  if (p === 'tab') return 'Tab'
-  if (p === 'arrowup' || p === 'up') return '↑'
-  if (p === 'arrowdown' || p === 'down') return '↓'
-  if (p === 'arrowleft' || p === 'left') return '←'
-  if (p === 'arrowright' || p === 'right') return '→'
-  return CODE_GLYPHS[p] ?? part.toUpperCase()
-}
-
-/**
- * Format key binding into array of display parts (e.g., "$mod+k" -> ["⌘", "K"] on Mac)
- * @param {string} key
- * @returns {string[]}
- */
-export function formatKeyParts(key) {
-  return formatWithRelease(key, formatKeyPart)
-}
-
-/**
- * Convert a KeyboardEvent to a canonical binding string (e.g. "$mod+shift+k")
- *
- * Returns null for bare modifier presses (Shift/Ctrl/Alt/Meta alone)
- * and for keys not in VALID_KEYS.
- *
- * @param {KeyboardEvent} event
- * @returns {string | null}
- */
-export function eventToBindingString(event) {
-  const key = event.key.toLowerCase()
-  const suffix = event.type === 'keyup' ? RELEASE_SUFFIX : ''
-
-  // Ignore bare modifier presses
-  if (['shift', 'control', 'alt', 'meta'].includes(key)) return null
-
-  // Normalize key name — prefer event.key, fall back to event.code
-  let normalizedKey = key === ' ' ? 'space' : key === '+' ? 'plus' : key
-  const code = event.code.toLowerCase()
-  if (code.startsWith('key')) {
-    const codeKey = code.slice(3)
-    if (VALID_KEYS.has(codeKey) && !VALID_KEYS.has(key)) normalizedKey = codeKey
-  }
-
-  if (!isValidKey(KEY_ALIASES[normalizedKey] ?? normalizedKey)) return null
-  // A symbol is recorded as the character typed ("?"), which already says Shift was needed
-  const shift = event.shiftKey && !isSymbolKey(KEY_ALIASES[normalizedKey] ?? normalizedKey)
-
-  return [...eventModParts(event, shift), normalizedKey].join('+') + suffix
-}
-
-/**
  * The keyboard
  * @returns {Input}
  */
 export function keys() {
   return {
     field: 'keys',
-    label: 'Key',
     parse(binding) {
       const parsed = parseKey(binding)
       return { lookup: keyToLookup(parsed), loose: keyToLookup({ ...parsed, mods: NO_MODS }), mods: parsed.mods }
-    },
-    format: formatKeyParts,
-    release: () => true,
-    prompt: (release) => release ? 'Press and release a key...' : 'Press a key...',
-
-    record({ release, ignore }, done) {
-      /** @type {{ id: string, binding: string } | null} */
-      let held = null
-      /** @param {Event} e */
-      const down = (e) => {
-        const event = /** @type {KeyboardEvent} */ (e)
-        if (ignore(event) || event.key === 'Escape') return
-        const binding = eventToBindingString(event)
-        if (!binding) return // bare modifier
-        event.preventDefault()
-        event.stopPropagation()
-        if (!release) return done(binding)
-        // Held until its keyup; the press-time modifiers are what the release binds to
-        if (!event.repeat) held = { id: event.code || event.key, binding }
-      }
-      /** @param {Event} e */
-      const up = (e) => {
-        const event = /** @type {KeyboardEvent} */ (e)
-        if (ignore(event) || !held || held.id !== (event.code || event.key)) return
-        event.preventDefault()
-        event.stopPropagation()
-        const binding = held.binding
-        held = null
-        done(binding + RELEASE_SUFFIX)
-      }
-      window.addEventListener('keydown', down, true)
-      window.addEventListener('keyup', up, true)
-      return () => {
-        window.removeEventListener('keydown', down, true)
-        window.removeEventListener('keyup', up, true)
-      }
     },
 
     listen(d) {

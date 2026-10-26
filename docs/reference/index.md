@@ -41,14 +41,16 @@ kb()
 
 ## Inputs
 
-Each kind of input is its own module, so an app only ships the ones it uses.
+Each kind of input is its own module, so an app only ships the ones it uses. Each also has a UI half, which shows and records its bindings for the settings panel, cheatsheet, palette and menus; an app without those components doesn't ship it.
 
-| Input | Module | Bindings |
-|-------|--------|----------|
-| `keys()` | `keybinds/keys` | `keys: ['$mod+k', 'Escape', '?', 'k:up']` |
-| `mouse({ wheel? })` | `keybinds/mouse` | `mouse: ['$mod+Click', 'MiddleClick', 'Back:up', 'ScrollUp']` |
-| `gamepad()` | `keybinds/gamepad` | `gamepad: ['a', 'rt', 'start:up']` |
-| `axes()` | `keybinds/axes` | an axis's `axes: ['mouse:x', '-pad:ry', 'keys:a/d']` |
+| Input | With its UI half | Bindings |
+|-------|------------------|----------|
+| `keys()` from `keybinds/keys` | `keysUI()` from `keybinds/keys-ui` | `keys: ['$mod+k', 'Escape', '?', 'k:up']` |
+| `mouse({ wheel? })` from `keybinds/mouse` | `mouseUI()` from `keybinds/mouse-ui` | `mouse: ['$mod+Click', 'MiddleClick', 'Back:up', 'ScrollUp']` |
+| `gamepad()` from `keybinds/gamepad` | `gamepadUI()` from `keybinds/gamepad-ui` | `gamepad: ['a', 'rt', 'start:up']` |
+| `axes()` from `keybinds/axes` | `axesUI()` from `keybinds/axes-ui` | an axis's `axes: ['mouse:x', '-pad:ry', 'keys:a/d']` |
+
+A UI half is the input plus more, so it goes in the same `inputs` list: `[keysUI(), mouseUI()]`.
 
 `mouse({ wheel: { step, idle } })`: a scroll binding runs once per `step` pixels scrolled (default 50, about one mouse-wheel notch), and `idle` ms without scrolling (default 200) ends a gesture.
 
@@ -57,9 +59,14 @@ An input is a plain object, so a new kind of input (a MIDI controller, say) is w
 ```ts
 interface Input {
   field: string                 // the command field holding its bindings
-  label: string                 // what one binding is called, for "+ Key"
   axis?: boolean                // its bindings are an axis's sources
   parse(binding: string): { lookup: string, loose: string, mods: Modifiers }  // throws if invalid
+  matches?(cmd: Command, event: Event): boolean
+  listen(d: Dispatch): (() => void) & { axis?(id: string): AxisValue }
+}
+
+interface InputUI extends Input {
+  label: string                 // what one binding is called, for "+ Key"
   format(binding: string): string[]
   release?(binding: string): boolean  // whether a binding can be its ":up" form
   invert?: boolean              // bindings can be inverted with a leading "-"
@@ -67,8 +74,6 @@ interface Input {
   watch?(onChange: () => void): () => void
   record?(options: { release: boolean, ignore(e: Event): boolean }, done: (binding: string) => void): () => void
   prompt?(release: boolean): string
-  matches?(cmd: Command, event: Event): boolean
-  listen(d: Dispatch): (() => void) & { axis?(id: string): AxisValue }
 }
 ```
 

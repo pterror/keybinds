@@ -92,24 +92,34 @@
 
 /**
  * A kind of input. Each is a module (keys, mouse, gamepad, axes) whose factory returns one of
- * these; keybinds() listens with the ones it's given, and the settings panel, cheatsheet and
- * palette show and record bindings through them.
+ * these, and keybinds() listens with the ones it's given.
  * @typedef {Object} Input
  * @property {string} field - The command (or axis) field holding its bindings: "keys", "mouse", ...
- * @property {string} label - What one binding is called ("Key"), for "+ Key"
  * @property {boolean} [axis] - Its bindings are an axis's sources rather than a command's triggers
  * @property {(binding: string) => ParsedBinding} parse - Throws if the binding is invalid
- * @property {(binding: string) => string[]} format - Display parts
- * @property {(binding: string) => boolean} [release] - Whether a binding can be its release
- *   form (":up"); absent for inputs that have no releases
- * @property {boolean} [invert] - Bindings can be inverted with a leading "-"
- * @property {() => boolean} [available] - Whether it can be recorded right now (a pad is connected)
- * @property {(onChange: () => void) => () => void} [watch] - Follows `available` changing
- * @property {(options: { release: boolean, ignore: (e: Event) => boolean }, done: (binding: string) => void) => () => void} [record] -
- *   Records a binding from what's done next; returns a function that stops
- * @property {(release: boolean) => string} [prompt] - What to do to record one
  * @property {(cmd: Command, event: Event) => boolean} [matches] - Whether an event is one of the command's press bindings
  * @property {(d: Dispatch) => InputHandle} listen
+ */
+
+/**
+ * An input that can also be shown and recorded, for the settings panel, cheatsheet, palette and
+ * menus. Each input's UI half is its own module (keybinds/keys-ui, ...), so an app without them
+ * doesn't ship it.
+ * @typedef {Input & {
+ *   label: string,
+ *   format: (binding: string) => string[],
+ *   release?: (binding: string) => boolean,
+ *   invert?: boolean,
+ *   available?: () => boolean,
+ *   watch?: (onChange: () => void) => () => void,
+ *   record?: (options: { release: boolean, ignore: (e: Event) => boolean }, done: (binding: string) => void) => () => void,
+ *   prompt?: (release: boolean) => string,
+ * }} InputUI
+ * `label` is what one binding is called ("Key", for "+ Key"); `format` gives display parts;
+ * `release` says whether a binding can be its release form (":up"), absent for inputs with no
+ * releases; `invert`: bindings can be inverted with a leading "-"; `available` says whether it can
+ * be recorded now (a pad is connected) and `watch` follows that changing; `record` records a
+ * binding from what's done next and returns a function that stops; `prompt` says what to do.
  */
 
 /**
@@ -148,13 +158,15 @@
  */
 
 /**
- * Marks a component with its kind, so styles and overlay checks work whatever tag name it was
- * registered under.
+ * Marks a component with its kind, so styles work whatever tag name it was registered under, and
+ * whether it takes the keyboard while open
  * @param {HTMLElement} el
  * @param {string} kind
+ * @param {boolean} [modal]
  */
-export function markKind(el, kind) {
+export function markKind(el, kind, modal = false) {
   if (!el.hasAttribute('data-keybinds')) el.setAttribute('data-keybinds', kind)
+  if (modal) el.setAttribute('data-keybinds-modal', '')
 }
 
 export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
@@ -299,10 +311,12 @@ export function isActive(command, context) {
   return command.when(context)
 }
 
-const OVERLAYS = '[data-keybinds="command-palette"][open], [data-keybinds="settings"][open], [data-keybinds="context-menu"][open], [data-keybinds="basic-context-menu"][open]'
+// An element with both takes the keyboard while it's open: bindings don't fire inside it. The
+// palette, settings panel and menus mark themselves; a page's own dialogs can too
+const OVERLAYS = '[data-keybinds-modal][open]'
 
 /**
- * Whether an element is inside a component whose own keyboard handling takes over while it's open
+ * Whether an element is inside one whose own keyboard handling takes over while it's open
  * @param {Element | null} tgt
  * @returns {boolean}
  */
@@ -601,7 +615,7 @@ export function findConflict(schema, bindingStr, input, excludeId) {
 /**
  * A command's bindings through each input, as display parts, in the order of `inputs`
  * @param {Command} cmd
- * @param {Input[]} inputs
+ * @param {InputUI[]} inputs
  * @returns {string[][]}
  */
 export function bindingParts(cmd, inputs) {

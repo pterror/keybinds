@@ -1,10 +1,10 @@
 export type Command = import('../core.js').Command;
-export type Input = import('../core.js').Input;
+export type Input = import('../core.js').InputUI;
 export type Scorer = import('../core.js').Scorer;
 export type HistoryEntry = import('../core.js').HistoryEntry;
 export type ScoredCommand = import('../core.js').ScoredCommand;
 /** @typedef {import('../core.js').Command} Command */
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 /** @typedef {import('../core.js').Scorer} Scorer */
 /** @typedef {import('../core.js').HistoryEntry} HistoryEntry */
 /** @typedef {import('../core.js').ScoredCommand} ScoredCommand */

@@ -1,5 +1,6 @@
 /**
  * Mouse input: buttons ("$mod+Click", "MiddleClick", "Back:up") and scrolling ("ScrollUp").
+ * Showing and recording them is keybinds/mouse-ui.
  */
 export type Modifiers = import('./core.js').Modifiers;
 export type Input = import('./core.js').Input;
@@ -20,18 +21,17 @@ export type ParsedMouse = {
  */
 export declare function parseMouse(binding: string): ParsedMouse;
 /**
- * Format mouse binding into array of display parts
- * @param {string} binding
- * @returns {string[]}
- */
-export declare function formatMouseParts(binding: string): string[];
-/**
- * Convert a MouseEvent or WheelEvent to a canonical binding string (e.g. "$mod+click", "$mod+scrollup")
- *
- * @param {MouseEvent} event
+ * Binding name for a MouseEvent.button value, null for buttons with no name
+ * @param {number} button
  * @returns {string | null}
  */
-export declare function eventToMouseBindingString(event: MouseEvent): string | null;
+export declare function pointerButtonName(button: number): string | null;
+/**
+ * Which way a wheel event scrolls, as a binding names it; null if it doesn't
+ * @param {WheelEvent} event
+ * @returns {string | null}
+ */
+export declare function wheelDirection(event: WheelEvent): string | null;
 /**
  * Whether a mouse press is one of a command's press bindings (same button, same modifiers), for
  * code that handles the press itself, like a drag that should start on a rebindable button.

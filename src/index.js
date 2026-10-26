@@ -16,10 +16,14 @@ import { RadialMenu } from './components/radial-menu.js'
 export {
   keybinds, validateCommands, executeCommand, findConflict, bindingParts, isActive,
 } from './core.js'
-export { keys, parseKey, formatKeyParts, eventToBindingString } from './keys.js'
-export { mouse, formatMouseParts, eventToMouseBindingString, mouseMatches } from './mouse.js'
-export { gamepad, formatGamepadParts } from './gamepad.js'
-export { axes, formatAxisParts } from './axes.js'
+export { keys, parseKey } from './keys.js'
+export { keysUI, formatKeyParts, eventToBindingString } from './keys-ui.js'
+export { mouse, mouseMatches } from './mouse.js'
+export { mouseUI, formatMouseParts, eventToMouseBindingString } from './mouse-ui.js'
+export { gamepad } from './gamepad.js'
+export { gamepadUI, formatGamepadParts } from './gamepad-ui.js'
+export { axes } from './axes.js'
+export { axesUI, formatAxisParts } from './axes-ui.js'
 export {
   matchCommands, searchCommands, defaultScorer, groupByCategory, filterByMenu, simpleMatcher, fuzzyMatcher,
 } from './search.js'
@@ -36,6 +40,7 @@ export { CommandPalette, KeybindCheatsheet, KeybindSettings, BasicContextMenu, C
  * @typedef {import('./core.js').AxisDef} AxisDef
  * @typedef {import('./core.js').AxisValue} AxisValue
  * @typedef {import('./core.js').Input} Input
+ * @typedef {import('./core.js').InputUI} InputUI
  * @typedef {import('./core.js').Dispatch} Dispatch
  * @typedef {import('./core.js').Press} Press
  * @typedef {import('./core.js').Modifiers} Modifiers

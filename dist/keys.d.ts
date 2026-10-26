@@ -1,14 +1,37 @@
 /**
- * Keyboard input: bindings like "$mod+k", "Escape", "?" or "k:up".
+ * Keyboard input: bindings like "$mod+k", "Escape", "?" or "k:up". Showing and recording them is
+ * keybinds/keys-ui.
  */
 export type Modifiers = import('./core.js').Modifiers;
 export type Input = import('./core.js').Input;
-export type Press = import('./core.js').Press;
 export type ParsedKey = {
     mods: Modifiers;
     key: string;
     release: boolean;
 };
+/** @typedef {import('./core.js').Modifiers} Modifiers */
+/** @typedef {import('./core.js').Input} Input */
+/**
+ * @typedef {Object} ParsedKey
+ * @property {Modifiers} mods
+ * @property {string} key
+ * @property {boolean} release - Binding fires when the key comes up ("k:up")
+ */
+export declare const KEY_ALIASES: Record<string, string>;
+export declare const PUNCTUATION_CODES: Record<string, string>;
+/**
+ * A single printable character that isn't a letter ("?", "!", "+", "é" is a letter).
+ * Shift is part of typing these, so a binding to one matches however it was typed.
+ * @param {string} key
+ * @returns {boolean}
+ */
+export declare function isSymbolKey(key: string): boolean;
+export declare const NAMED_KEY: RegExp;
+/**
+ * @param {string} key
+ * @returns {boolean}
+ */
+export declare function isValidKey(key: string): boolean;
 /**
  * Parse a key string like "Ctrl+Shift+K" or "K:up" into normalized form
  * @param {string} keyStr
@@ -30,22 +53,6 @@ export declare function keyToLookup(parsed: ParsedKey): string;
  * @returns {string[]}
  */
 export declare function eventToKeyLookups(event: KeyboardEvent, prefix?: string, suffix?: string): string[];
-/**
- * Format key binding into array of display parts (e.g., "$mod+k" -> ["⌘", "K"] on Mac)
- * @param {string} key
- * @returns {string[]}
- */
-export declare function formatKeyParts(key: string): string[];
-/**
- * Convert a KeyboardEvent to a canonical binding string (e.g. "$mod+shift+k")
- *
- * Returns null for bare modifier presses (Shift/Ctrl/Alt/Meta alone)
- * and for keys not in VALID_KEYS.
- *
- * @param {KeyboardEvent} event
- * @returns {string | null}
- */
-export declare function eventToBindingString(event: KeyboardEvent): string | null;
 /**
  * The keyboard
  * @returns {Input}

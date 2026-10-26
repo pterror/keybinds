@@ -1,10 +1,10 @@
 import { markKind, isMac, bindingParts } from '../core.js'
 import { groupByCategory } from '../search.js'
 import { onModifierHold, onModifierTaps } from '../modifiers.js'
-import { keys } from '../keys.js'
+import { keysUI } from '../keys-ui.js'
 
 /** @typedef {import('../core.js').Command} Command */
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 
 /**
  * <keybinds-cheatsheet> - Grouped display of available bindings
@@ -49,7 +49,7 @@ export class KeybindCheatsheet extends HTMLElement {
   constructor() {
     super()
     /** How bindings are shown. @type {Input[]} */
-    this.inputs = [keys()]
+    this.inputs = [keysUI()]
     /** @type {Command[]} */
     this._commands = []
     /** @type {Record<string, unknown>} */

@@ -126,7 +126,7 @@ Rebindable keyboard shortcuts panel with conflict detection.
 | Property | Type | Description |
 |----------|------|-------------|
 | `store` | `BindingsStore` | Reactive bindings store instance |
-| `inputs` | `Input[]` | Which bindings are shown and can be recorded (default: keys only) |
+| `inputs` | `InputUI[]` | Which bindings are shown and can be recorded (default: keys only) |
 | `open` | `boolean` | Show/hide the settings panel |
 
 ### Attributes
@@ -146,7 +146,7 @@ Rebindable keyboard shortcuts panel with conflict detection.
 ### Usage
 
 ```js
-import { BindingsStore, defineSchema, registerComponents, keys, mouse } from 'keybinds'
+import { BindingsStore, defineSchema, registerComponents, keysUI, mouseUI } from 'keybinds'
 
 const schema = defineSchema({
   save: { label: 'Save', category: 'File', keys: ['$mod+s'] },
@@ -157,7 +157,7 @@ const store = new BindingsStore(schema, 'myapp:keybinds')
 registerComponents()
 
 const settings = document.querySelector('keybinds-settings')
-settings.inputs = [keys(), mouse()]
+settings.inputs = [keysUI(), mouseUI()]
 settings.store = store
 
 // Open settings
@@ -321,3 +321,11 @@ const cleanup = onModifierTaps('Control', 2, () => {
 ### Recording releases
 
 While recording, the prompt has a **Release** toggle. With it on, the next key or button is recorded as a release (`k:up`, `back:up`): press it, and the binding is stored when it comes up, with the modifiers held at press time. Each binding also has a **Release** switch that flips it between its press and release form. Scroll bindings have no release.
+
+## Your Own Dialogs
+
+While the palette, settings panel or a menu is open, bindings don't fire inside it: they carry `data-keybinds-modal`, and an element with that attribute and `open` takes the keyboard. A page's own dialog can do the same:
+
+```html
+<dialog data-keybinds-modal open>...</dialog>
+```

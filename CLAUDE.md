@@ -11,12 +11,13 @@ Declarative, contextual keybindings for the web. Zero-dependency JavaScript libr
 One module per part, JSDoc types checked via `tsconfig.json`; `src/index.js` re-exports everything.
 
 - `src/core.js` — `keybinds()`, the dispatcher: commands, context, presses, `held`. Knows no particular input
-- `src/keys.js`, `src/mouse.js`, `src/gamepad.js`, `src/axes.js` — inputs: each parses, formats, records and listens for its own bindings
+- `src/keys.js`, `src/mouse.js`, `src/gamepad.js`, `src/axes.js` — inputs: each parses and listens for its own bindings; `src/*-ui.js` formats and records them
 - `src/search.js`, `src/store.js`, `src/modifiers.js`, `src/hub.js`, `src/components/*.js`
 
 Key concepts:
 - **Commands** — data objects combining triggers (keys/mouse/gamepad), labels, context conditions, and handlers
-- **Inputs** — passed to `keybinds()` and the hub (`inputs: [keys(), mouse()]`); an app ships only the ones it uses
+- **Inputs** — passed to `keybinds()` and the hub (`inputs: [keys(), mouse()]`); an app ships only the ones it uses. Each has a UI half (`keysUI()` in `src/keys-ui.js`, ...) that formats and records bindings, which only the components need
+- **Modals** — an element with `data-keybinds-modal` and `open` takes the keyboard: bindings don't fire inside it
 - **Schema/Handlers split** — `defineSchema` for binding data, `fromBindings` to attach handlers
 - **BindingsStore** — reactive user overrides, kept in localStorage or any `BindingsStorage`
 - **Web components** — palette, cheatsheet, settings, context menus, radial menu (shadow DOM; each marks itself `data-keybinds="<kind>"`; `styles/palette.css` themes them from `--keybinds-*` variables)

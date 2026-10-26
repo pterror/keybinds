@@ -36,7 +36,8 @@ export type CommandHubOptions = {
 /** @typedef {import('./components/context-menu.js').ContextMenu} ContextMenu */
 /**
  * @typedef {Object} CommandHubOptions
- * @property {Input[]} [inputs] - What to listen to and show: e.g. [keys(), mouse(), gamepad(), axes()]
+ * @property {Input[]} [inputs] - What to listen to: e.g. [keys(), mouse()]. With components, their UI
+ *   halves, which can also be shown and recorded: [keysUI(), mouseUI()]
  * @property {(CustomElementConstructor & { kind: string })[]} [components] - Components to make
  *   inside `host`: any of CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu
  * @property {HTMLElement} [host] - Where the components go

@@ -22,7 +22,7 @@
   "scripts": {
     "test": "bun test",
     "check": "tsgo --noEmit",
-    "build:types": "tsgo --declaration --emitDeclarationOnly --outDir dist --rootDir src && rm -f dist/index.test.d.ts"
+    "build:types": "tsgo --declaration --emitDeclarationOnly --outDir dist --rootDir src && find dist -name '*.test.d.ts' -delete && rm -f dist/test-helpers.d.ts"
   },
   "files": ["src", "styles", "dist"],
   "sideEffects": ["./styles/*.css"],

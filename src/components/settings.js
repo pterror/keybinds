@@ -1,7 +1,7 @@
 import { markKind, findConflict, flipRelease, splitRelease } from '../core.js'
-import { keys } from '../keys.js'
+import { keysUI } from '../keys-ui.js'
 
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 /** @typedef {import('../core.js').BindingSchema} BindingSchema */
 /** @typedef {import('../store.js').BindingsStore<any>} AnyStore */
 
@@ -58,7 +58,7 @@ export class KeybindSettings extends HTMLElement {
     /** @type {((e: Event) => void) | null} */
     this._storeListener = null
     /** @type {Input[]} */
-    this._inputs = [keys()]
+    this._inputs = [keysUI()]
     /** @type {(() => void)[]} */
     this._unwatch = []
     /** @type {{ commandId: string, input: Input, index: number | null } | null} */
@@ -99,7 +99,7 @@ export class KeybindSettings extends HTMLElement {
   }
 
   connectedCallback() {
-    markKind(this, 'settings')
+    markKind(this, 'settings', true)
     this._watchInputs()
   }
 

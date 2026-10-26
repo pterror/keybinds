@@ -20,7 +20,8 @@ import { createComponent } from './components/create.js'
 
 /**
  * @typedef {Object} CommandHubOptions
- * @property {Input[]} [inputs] - What to listen to and show: e.g. [keys(), mouse(), gamepad(), axes()]
+ * @property {Input[]} [inputs] - What to listen to: e.g. [keys(), mouse()]. With components, their UI
+ *   halves, which can also be shown and recorded: [keysUI(), mouseUI()]
  * @property {(CustomElementConstructor & { kind: string })[]} [components] - Components to make
  *   inside `host`: any of CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu
  * @property {HTMLElement} [host] - Where the components go
@@ -101,6 +102,9 @@ export class CommandHub extends EventTarget {
 
     const components = options.components ?? []
     if (components.length > 0 && !options.host) throw new Error('CommandHub: components need a host to go in')
+    // Components show and record bindings, which is each input's UI half
+    const bare = components.length > 0 && this.inputs.find((i) => !('format' in i))
+    if (bare) throw new Error(`CommandHub: components need inputs that can be shown; use ${bare.field}UI() from keybinds/${bare.field}-ui`)
     if (!options.host) return
     for (const cls of components) {
       const el = /** @type {HTMLElement & { inputs?: Input[] }} */ (createComponent(cls))
@@ -361,7 +365,8 @@ export class CommandHub extends EventTarget {
     // A command's are what it's listening with (an unreadable binding was dropped); an axis's are in the store
     const source = input.axis ? this._store?.get()[id] : this._live.get(id)
     const list = /** @type {string[] | undefined} */ (/** @type {Record<string, unknown> | undefined} */ (source)?.[field])
-    return (list ?? []).map((b) => input.format(b).join(input.axis ? ' ' : '+'))
+    const format = 'format' in input ? /** @type {import('./core.js').InputUI} */ (input).format : null
+    return (list ?? []).map((b) => format ? format(b).join(input.axis ? ' ' : '+') : b)
   }
 
   /**

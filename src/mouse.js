@@ -1,10 +1,10 @@
 /**
  * Mouse input: buttons ("$mod+Click", "MiddleClick", "Back:up") and scrolling ("ScrollUp").
+ * Showing and recording them is keybinds/mouse-ui.
  */
 
 import {
-  RELEASE_SUFFIX, NO_MODS, splitRelease, parseMods, modsToPrefix, eventMods, eventModParts,
-  holdsAll, formatModPart, formatWithRelease, overlayOpen,
+  RELEASE_SUFFIX, NO_MODS, splitRelease, parseMods, modsToPrefix, eventMods, holdsAll, overlayOpen,
 } from './core.js'
 
 /** @typedef {import('./core.js').Modifiers} Modifiers */
@@ -107,7 +107,7 @@ function isSideButton(button) {
  * @param {number} button
  * @returns {string | null}
  */
-function pointerButtonName(button) {
+export function pointerButtonName(button) {
   if (!Number.isInteger(button) || button < 0 || button >= POINTER_BUTTON_COUNT) return null
   return BUTTON_NAMES[button] ?? null
 }
@@ -130,7 +130,7 @@ function eventToMouseLookup(event, prefix, suffix = '') {
  * @param {WheelEvent} event
  * @returns {string | null}
  */
-function wheelDirection(event) {
+export function wheelDirection(event) {
   // Prefer vertical axis; fall back to horizontal
   if (event.deltaY < 0) return 'scrollup'
   if (event.deltaY > 0) return 'scrolldown'
@@ -149,56 +149,6 @@ function wheelDistance(event) {
   if (event.deltaMode === 1) return d * 16
   if (event.deltaMode === 2) return d * (typeof window !== 'undefined' ? window.innerHeight : 800)
   return d
-}
-
-/**
- * Format a single mouse binding part for display
- * @param {string} part
- * @returns {string}
- */
-function formatMousePart(part) {
-  const p = part.trim().toLowerCase()
-  const mod = formatModPart(p)
-  if (mod) return mod
-  if (p === 'click' || p === 'leftclick' || p === 'left') return 'Click'
-  if (p === 'middleclick' || p === 'middle') return 'Middle'
-  if (p === 'rightclick' || p === 'right') return 'Right'
-  if (p === 'backclick' || p === 'back') return 'Back'
-  if (p === 'forwardclick' || p === 'forward') return 'Forward'
-  if (p === 'scrollup') return 'Scroll ↑'
-  if (p === 'scrolldown') return 'Scroll ↓'
-  if (p === 'scrollleft') return 'Scroll ←'
-  if (p === 'scrollright') return 'Scroll →'
-  return part
-}
-
-/**
- * Format mouse binding into array of display parts
- * @param {string} binding
- * @returns {string[]}
- */
-export function formatMouseParts(binding) {
-  return formatWithRelease(binding, formatMousePart)
-}
-
-/**
- * Convert a MouseEvent or WheelEvent to a canonical binding string (e.g. "$mod+click", "$mod+scrollup")
- *
- * @param {MouseEvent} event
- * @returns {string | null}
- */
-export function eventToMouseBindingString(event) {
-  let buttonName
-  if ('deltaY' in event && 'deltaX' in event) {
-    buttonName = wheelDirection(/** @type {WheelEvent} */ (event))
-    if (!buttonName) return null
-  } else {
-    const name = pointerButtonName(event.button)
-    if (!name) return null
-    buttonName = name
-    if (event.type === 'mouseup') buttonName += RELEASE_SUFFIX
-  }
-  return [...eventModParts(event), buttonName].join('+')
 }
 
 /**
@@ -230,58 +180,11 @@ export function mouse(options = {}) {
   const { step: WHEEL_STEP = 50, idle: WHEEL_IDLE = 200 } = options.wheel ?? {}
   return {
     field: 'mouse',
-    label: 'Mouse',
     parse(binding) {
       const parsed = parseMouse(binding)
       return { lookup: mouseToLookup(parsed), loose: mouseToLookup({ ...parsed, mods: NO_MODS }), mods: parsed.mods }
     },
-    format: formatMouseParts,
-    release: (binding) => !/(^|\+)scroll(up|down|left|right)$/i.test(splitRelease(binding.toLowerCase()).body),
-    prompt: (release) => release ? 'Press and release a button...' : 'Click or scroll...',
     matches: (cmd, event) => mouseMatches(cmd, /** @type {MouseEvent} */ (event)),
-
-    record({ release, ignore }, done) {
-      /** @type {{ button: number, binding: string } | null} */
-      let held = null
-      /** @param {Event} e */
-      const down = (e) => {
-        const event = /** @type {MouseEvent} */ (e)
-        if (ignore(event)) return
-        const binding = eventToMouseBindingString(event)
-        if (!binding) return
-        event.preventDefault()
-        event.stopPropagation()
-        if (!release) return done(binding)
-        held = { button: event.button, binding }
-      }
-      /** @param {Event} e */
-      const up = (e) => {
-        const event = /** @type {MouseEvent} */ (e)
-        if (ignore(event) || !held || held.button !== event.button) return
-        event.preventDefault()
-        event.stopPropagation()
-        const binding = held.binding
-        held = null
-        done(binding + RELEASE_SUFFIX)
-      }
-      /** @param {Event} e */
-      const wheel = (e) => {
-        if (release) return // scroll has no release
-        const binding = eventToMouseBindingString(/** @type {WheelEvent} */ (e))
-        if (!binding) return
-        e.preventDefault()
-        e.stopPropagation()
-        done(binding)
-      }
-      window.addEventListener('mousedown', down, true)
-      window.addEventListener('mouseup', up, true)
-      window.addEventListener('wheel', wheel, { capture: true })
-      return () => {
-        window.removeEventListener('mousedown', down, true)
-        window.removeEventListener('mouseup', up, true)
-        window.removeEventListener('wheel', wheel, true)
-      }
-    },
 
     listen(d) {
       /**

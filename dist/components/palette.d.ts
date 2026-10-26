@@ -1,11 +1,11 @@
 export type Command = import('../core.js').Command;
 export type Matcher = import('../core.js').Matcher;
 export type ScoredCommand = import('../core.js').ScoredCommand;
-export type Input = import('../core.js').Input;
+export type Input = import('../core.js').InputUI;
 /** @typedef {import('../core.js').Command} Command */
 /** @typedef {import('../core.js').Matcher} Matcher */
 /** @typedef {import('../core.js').ScoredCommand} ScoredCommand */
-/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').InputUI} Input */
 /**
  * <keybinds-command-palette> - Search-driven command execution
  *
