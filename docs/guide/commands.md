@@ -22,6 +22,14 @@ interface Command {
 }
 ```
 
+Each kind of binding is read by an input, passed to `keybinds()`: `keys()` reads `keys`, `mouse()` reads `mouse`, `gamepad()` reads `gamepad`, and `axes()` reads axes. An app that only uses the keyboard passes only `keys()` and ships nothing else. A command with bindings no input reads is an error, rather than bindings that silently do nothing.
+
+```js
+import { keybinds, keys, mouse } from 'keybinds'
+
+keybinds(commands, getContext, { inputs: [keys(), mouse()] })
+```
+
 ## Key Bindings
 
 Key strings support modifiers and the `$mod` macro:
@@ -90,7 +98,7 @@ mouse: ['MiddleClick', 'MiddleClick:up']
 A game reads its movement every frame instead of reacting to each key event. `keybinds()` returns its cleanup function with a `held(id)` on it, true from the moment a command's press fires until that key or button comes up (or the window loses focus, for keys):
 
 ```js
-const kb = keybinds([{ id: 'forward', label: 'Move forward', keys: ['w'], anyModifiers: true, execute: () => {} }])
+const kb = keybinds([{ id: 'forward', label: 'Move forward', keys: ['w'], anyModifiers: true, execute: () => {} }], undefined, { inputs: [keys()] })
 function frame() {
   if (kb.held('forward')) player.walk()
   requestAnimationFrame(frame)
@@ -108,10 +116,10 @@ Looking around or steering isn't a command run per key press; it's a value read 
 | `pad:lt`, `pad:rt` | Triggers, 0 to 1 |
 | `keys:a/d` | Two keys: the first toward -1, the second toward 1 |
 
-A leading `-` inverts a source (`-mouse:y`). Pass axes as an option and read them with `axis(id)`:
+A leading `-` inverts a source (`-mouse:y`). Pass axes as an option, with `axes()` among the inputs, and read them with `axis(id)`:
 
 ```js
-const kb = keybinds(commands, getContext, { axes: [
+const kb = keybinds(commands, getContext, { inputs: [keys(), mouse(), gamepad(), axes()], axes: [
   { id: 'look-x', label: 'Look left/right', axes: ['mouse:x', 'pad:rx'] },
   { id: 'strafe', label: 'Strafe', axes: ['keys:a/d', 'pad:lx'] },
 ] })
@@ -147,7 +155,7 @@ mouse: ['scrollright']      // Horizontal scroll right
 
 **Directions:** `scrollup`, `scrolldown`, `scrollleft`, `scrollright`
 
-A scroll binding runs once per step of scrolling: a mouse-wheel notch is one step, and a trackpad's stream of small deltas adds up to one every 50 pixels. While a bound gesture is going, the page doesn't scroll or zoom in between steps; a pause of 200 ms ends it. Both numbers are options (`wheel: { step, idle }`). If the command returns `false`, the rest of that gesture goes to the page.
+A scroll binding runs once per step of scrolling: a mouse-wheel notch is one step, and a trackpad's stream of small deltas adds up to one every 50 pixels. While a bound gesture is going, the page doesn't scroll or zoom in between steps; a pause of 200 ms ends it. Both numbers are options of the mouse input (`mouse({ wheel: { step, idle } })`). If the command returns `false`, the rest of that gesture goes to the page.
 
 ## Context Menu Tags
 
@@ -257,13 +265,15 @@ const store = new BindingsStore(schema, {
 When commands come from several parts of an app, and come and go with its state, `CommandHub` does all of the above in one place: it collects commands from every source, derives the schema from them, keeps each person's rebindings, listens for keys, and keeps the components and any command buttons up to date.
 
 ```js
-import { CommandHub } from 'keybinds'
+import { CommandHub, keys, mouse, CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu } from 'keybinds'
 import 'keybinds/styles/palette.css'
 
 const hub = new CommandHub({
+  inputs: [keys(), mouse()],  // what it listens to, and what its components show and record
+  components: [CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu],
+  host: document.body,        // where the components go
   storageKey: 'myapp:keys',   // rebindings are kept under "myapp:keys:<scope>"; or pass
                               // storage: (scope) => ({ load, save }) to keep them elsewhere
-  host: document.body,        // makes a palette, cheatsheet, settings panel and context menu here
   listen: { capture: true },  // keybinds() options; capture lets a command take a key before an editor does
 })
 
@@ -274,7 +284,7 @@ hub.refresh()               // call again whenever the sources' commands change
 
 hub.palette.open = true     // or hub.openPalette()
 hub.settings.open = true    // rebinding: changes take effect immediately
-hub.keysFor('save')         // ["Ctrl+S"], after any rebinding
+hub.bindingsFor('save', 'keys')  // ["Ctrl+S"], after any rebinding
 hub.held('forward')         // whether that command is held down right now
 hub.syncContext()           // when state changes, so unavailable commands gray out
 ```
@@ -306,8 +316,23 @@ const hub = new CommandHub({ adapt: (def) => ({ ...def, execute: def.run }) })
 
 ### Components From Another Copy of the Library
 
-A custom element name stays bound to the first class defined for it. `createComponent(kind)` (which the hub uses) gives each copy of keybinds on a page its own names, so two bundles, or a script reloaded after a deploy, don't clash:
+A custom element name stays bound to the first class defined for it. `createComponent(cls)` (which the hub uses) gives each copy of keybinds on a page its own names, so two bundles, or a script reloaded after a deploy, don't clash:
 
 ```js
-const palette = createComponent('command-palette')
+const palette = createComponent(CommandPalette)
+```
+
+### Without a Bundler
+
+Each part is its own module, so a page loading keybinds straight from a CDN can import only what it uses, mapping `keybinds/` to the `src/` directory:
+
+```html
+<script type="importmap">
+{ "imports": { "keybinds/": "https://cdn.jsdelivr.net/gh/pterror/keybinds@<commit>/src/" } }
+</script>
+<script type="module">
+  import { CommandHub } from 'keybinds/hub.js'
+  import { keys } from 'keybinds/keys.js'
+  import { KeybindSettings } from 'keybinds/components/settings.js'
+</script>
 ```

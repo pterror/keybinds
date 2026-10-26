@@ -1,0 +1,142 @@
+export type Input = import('../core.js').Input;
+export type BindingSchema = import('../core.js').BindingSchema;
+export type AnyStore = import('../store.js').BindingsStore<any>;
+/** @typedef {import('../core.js').Input} Input */
+/** @typedef {import('../core.js').BindingSchema} BindingSchema */
+/** @typedef {import('../store.js').BindingsStore<any>} AnyStore */
+/**
+ * <keybinds-settings> - Keybinding settings panel
+ *
+ * Attributes:
+ *   open - Show/hide the settings panel
+ *
+ * Properties:
+ *   store: BindingsStore  - Reactive bindings store
+ *   inputs: Input[]       - Which bindings are shown and can be recorded (default: keys only)
+ *   open: boolean         - Show/hide the settings panel
+ *
+ * Events:
+ *   close  - Fired when settings panel is dismissed
+ *   change - Fired when a binding is changed (detail: { commandId, bindings })
+ *   reset  - Fired when bindings are reset (detail: { commandId? })
+ *
+ * BEM classes:
+ *   .settings
+ *   .settings__backdrop
+ *   .settings__dialog
+ *   .settings__header
+ *   .settings__title
+ *   .settings__reset-all
+ *   .settings__group
+ *   .settings__group-title
+ *   .settings__list
+ *   .settings__item
+ *   .settings__item-label
+ *   .settings__item-bindings
+ *   .settings__item-reset
+ *   .settings__binding
+ *   .settings__binding-keys
+ *   .settings__binding-key
+ *   .settings__binding-remove
+ *   .settings__item-add
+ *   .settings__binding--recording
+ *   .settings__recording-overlay
+ *   .settings__conflict
+ */
+export declare class KeybindSettings extends HTMLElement {
+    static kind: string;
+    static get observedAttributes(): string[];
+    constructor();
+    connectedCallback(): void;
+    get store(): import("../store.js").BindingsStore<any> | null;
+    set store(val: import("../store.js").BindingsStore<any> | null);
+    get inputs(): import("../core.js").Input[];
+    set inputs(val: import("../core.js").Input[]);
+    get open(): boolean;
+    set open(val: boolean);
+    /**
+     * @param {string} name
+     * @param {string | null} _oldVal
+     * @param {string | null} newVal
+     */
+    attributeChangedCallback(name: string, _oldVal: string | null, newVal: string | null): void;
+    disconnectedCallback(): void;
+    _watchInputs(): void;
+    _close(): void;
+    /**
+     * The effective bindings for a command (overrides merged with schema), by field
+     * @param {string} commandId
+     * @returns {Record<string, string[]>}
+     */
+    _getBindings(commandId: string): Record<string, string[]>;
+    /**
+     * Save binding changes, cleaning up overrides that match defaults
+     * @param {string} commandId
+     * @param {Record<string, string[]>} newBindings
+     */
+    _saveBindings(commandId: string, newBindings: Record<string, string[]>): void;
+    /**
+     * @param {string} commandId
+     * @param {Input} input
+     * @param {number | null} index - null for adding, number for replacing
+     */
+    _startRecording(commandId: string, input: Input, index: number | null): void;
+    _record(): void;
+    _stopRecording(): void;
+    /** @param {boolean} release */
+    _setRecordRelease(release: boolean): void;
+    /**
+     * Switch a stored binding to another form of it: its release, or inverted
+     * @param {string} commandId
+     * @param {Input} input
+     * @param {number} index
+     * @param {string} flipped
+     */
+    _flip(commandId: string, input: Input, index: number, flipped: string): void;
+    /**
+     * Release switch inside the recording overlay
+     * @returns {HTMLElement}
+     */
+    _renderReleaseToggle(): HTMLElement;
+    /** @param {string} bindingStr */
+    _handleRecordedBinding(bindingStr: string): void;
+    /**
+     * @param {string} commandId
+     * @param {Input} input
+     * @param {number | null} index
+     * @param {string} bindingStr
+     */
+    _applyBinding(commandId: string, input: Input, index: number | null, bindingStr: string): void;
+    _acceptConflict(): void;
+    _cancelConflict(): void;
+    /**
+     * @param {string} commandId
+     * @param {Input} input
+     * @param {number} index
+     */
+    _removeBinding(commandId: string, input: Input, index: number): void;
+    /** @param {string} commandId */
+    _resetCommand(commandId: string): void;
+    _resetAll(): void;
+    _render(): void;
+    /**
+     * What's shown while recording: the input's prompt, and for inputs with releases, the Release switch
+     * @returns {HTMLElement}
+     */
+    _renderRecording(): HTMLElement;
+    /**
+     * @param {string} commandId
+     * @param {Input} input
+     * @param {number} index
+     * @param {string} bindingStr
+     * @returns {HTMLElement}
+     */
+    _renderBinding(commandId: string, input: Input, index: number, bindingStr: string): HTMLElement;
+    /**
+     * @param {HTMLElement} el
+     * @returns {HTMLElement}
+     */
+    _withConflict(el: HTMLElement): HTMLElement;
+    /** @returns {HTMLElement} */
+    _renderConflict(): HTMLElement;
+}

@@ -1,0 +1,617 @@
+/**
+ * keybinds - Declarative contextual keybindings
+ *
+ * Commands as data, context as state, zero dependencies. Every kind of input (keys, mouse,
+ * gamepad, axes) is its own module, handed to keybinds() by whoever uses it; the core only
+ * knows commands, context and presses.
+ */
+
+/**
+ * @typedef {Object} Modifiers
+ * @property {boolean} ctrl
+ * @property {boolean} alt
+ * @property {boolean} shift
+ * @property {boolean} meta
+ */
+
+/**
+ * @typedef {Object} Command
+ * @property {string} id - Unique identifier
+ * @property {string} label - Display name
+ * @property {string | undefined} [description] - Extended description for palette
+ * @property {string | undefined} [category] - Group for command palette
+ * @property {string[] | undefined} [keys] - Keyboard triggers
+ * @property {string[] | undefined} [mouse] - Mouse triggers
+ * @property {string[] | undefined} [gamepad] - Gamepad button triggers (e.g. "a", "rt", "start:up")
+ * @property {((ctx: Record<string, unknown>) => boolean) | undefined} [when] - Activation condition
+ * @property {(ctx: Record<string, unknown>, event?: Event) => unknown} execute - Action
+ * @property {boolean | undefined} [hidden] - Hide from search
+ * @property {boolean | undefined} [captureInput] - Fire even in input fields
+ * @property {boolean | undefined} [anyModifiers] - Bindings match whatever other modifiers are held
+ *   (a binding's own modifiers are still required), e.g. a game's movement keys. A binding that
+ *   matches exactly still comes first
+ * @property {string | string[] | undefined} [menu] - Context menu tag(s)
+ * @property {number | undefined} [rank] - Where it's listed among matches, before relevance: higher first (default 0)
+ */
+
+/**
+ * A continuous input read every frame (looking around, steering), instead of a command run per
+ * event. Its sources are any of: "mouse:x" / "mouse:y" (movement), "pad:lx" / "pad:ly" /
+ * "pad:rx" / "pad:ry" (sticks), "pad:lt" / "pad:rt" (triggers), "keys:a/d" (the first key toward
+ * -1, the second toward 1). A leading "-" inverts a source.
+ * @typedef {Object} AxisDef
+ * @property {string} id
+ * @property {string} label
+ * @property {string | undefined} [category]
+ * @property {string | undefined} [description]
+ * @property {string[]} axes - Sources
+ * @property {((ctx: Record<string, unknown>) => boolean) | undefined} [when] - Reads as zero otherwise
+ * @property {boolean | undefined} [hidden] - Hide from settings
+ */
+
+/**
+ * An axis's value. `position` is where sticks, triggers and keys are, -1 to 1. `delta` is mouse
+ * movement in pixels since this axis was last read. They're kept apart because they're different
+ * things: a position is scaled by a speed and the frame's time, a delta by a sensitivity.
+ * @typedef {{ position: number, delta: number }} AxisValue
+ */
+
+/**
+ * A binding, normalized. `lookup` is equal for bindings that trigger the same way; `loose` is
+ * the lookup without modifiers, which `anyModifiers` commands are found by, and `mods` the
+ * modifiers the binding still requires then.
+ * @typedef {{ lookup: string, loose: string, mods: Modifiers }} ParsedBinding
+ */
+
+/**
+ * A held input. `mods` is the modifier state at press time, which release bindings match
+ * against; `fired` holds the commands whose press executed. Inputs keep what else they need on it.
+ * @typedef {{ mods: Modifiers, fired: Set<Command>, [extra: string]: unknown }} Press
+ */
+
+/**
+ * What keybinds() gives each input to work with
+ * @typedef {Object} Dispatch
+ * @property {EventTarget} target - Where to listen
+ * @property {boolean} capture - Whether to listen in the capture phase
+ * @property {boolean} bound - Whether any command has a binding for this input
+ * @property {AxisDef[]} axes - The axes passed to keybinds()
+ * @property {() => Record<string, unknown>} context
+ * @property {Map<string, Press>} presses - This input's held presses, by whatever id it chooses
+ * @property {(lookups: string[], loose: string[], mods: Modifiers) => Command[] | undefined} candidates -
+ *   Commands bound to the first of `lookups` that has any, then `anyModifiers` ones bound to the
+ *   first of `loose` whose own modifiers are among `mods`
+ * @property {(candidates: Command[], event: Event, options?: { inInput?: boolean, press?: Press }) => Command | null} fire -
+ *   Runs the first active candidate that takes the event, noting it on `press`
+ * @property {(candidates: Command[], press: Press, event: Event, options?: { blocked?: boolean, inInput?: boolean }) => boolean} release -
+ *   Runs a release's candidates: commands whose own press fired always run (a hold can't be left
+ *   open), the rest as usual until one takes it. Returns whether any did
+ * @property {(cmd: Command) => boolean} isActive
+ * @property {(cmd: Command, event: Event) => boolean} execute - Runs a command, true if it took the event
+ */
+
+/**
+ * A kind of input. Each is a module (keys, mouse, gamepad, axes) whose factory returns one of
+ * these; keybinds() listens with the ones it's given, and the settings panel, cheatsheet and
+ * palette show and record bindings through them.
+ * @typedef {Object} Input
+ * @property {string} field - The command (or axis) field holding its bindings: "keys", "mouse", ...
+ * @property {string} label - What one binding is called ("Key"), for "+ Key"
+ * @property {boolean} [axis] - Its bindings are an axis's sources rather than a command's triggers
+ * @property {(binding: string) => ParsedBinding} parse - Throws if the binding is invalid
+ * @property {(binding: string) => string[]} format - Display parts
+ * @property {(binding: string) => boolean} [release] - Whether a binding can be its release
+ *   form (":up"); absent for inputs that have no releases
+ * @property {boolean} [invert] - Bindings can be inverted with a leading "-"
+ * @property {() => boolean} [available] - Whether it can be recorded right now (a pad is connected)
+ * @property {(onChange: () => void) => () => void} [watch] - Follows `available` changing
+ * @property {(options: { release: boolean, ignore: (e: Event) => boolean }, done: (binding: string) => void) => () => void} [record] -
+ *   Records a binding from what's done next; returns a function that stops
+ * @property {(release: boolean) => string} [prompt] - What to do to record one
+ * @property {(cmd: Command, event: Event) => boolean} [matches] - Whether an event is one of the command's press bindings
+ * @property {(d: Dispatch) => InputHandle} listen
+ */
+
+/**
+ * What an input's listen() returns: a function that stops it, which can also read axes
+ * @typedef {(() => void) & { axis?: (id: string) => AxisValue }} InputHandle
+ */
+
+/**
+ * @typedef {{ score: number, positions?: number[] }} MatchResult
+ * @typedef {(query: string, text: string) => MatchResult | null} Matcher
+ * @typedef {{ id: string, timestamp: number }} HistoryEntry
+ * @typedef {(command: Command, context: unknown) => number} Scorer
+ * @typedef {{ matcher?: Matcher | undefined, scorer?: Scorer | undefined }} SearchOptions
+ * @typedef {Command & { active: boolean, score: number, positions?: number[] }} ScoredCommand
+ */
+
+/**
+ * @typedef {Object} BindingSchema
+ * @property {string} label - Display name
+ * @property {string | undefined} [description] - Extended description for palette
+ * @property {string | undefined} [category] - Group for command palette
+ * @property {string[] | undefined} [keys] - Default keyboard triggers
+ * @property {string[] | undefined} [mouse] - Default mouse triggers
+ * @property {string[] | undefined} [gamepad] - Default gamepad button triggers
+ * @property {string[] | undefined} [axes] - Default sources, for an axis (see {@link AxisDef})
+ * @property {boolean | undefined} [hidden] - Hide from search/settings
+ * @property {string | string[] | undefined} [menu] - Context menu tag(s)
+ */
+
+/**
+ * @typedef {Record<string, BindingSchema>} Schema
+ */
+
+/**
+ * @typedef {Record<string, { keys?: string[], mouse?: string[], gamepad?: string[], axes?: string[] }>} BindingOverrides
+ */
+
+/**
+ * Marks a component with its kind, so styles and overlay checks work whatever tag name it was
+ * registered under.
+ * @param {HTMLElement} el
+ * @param {string} kind
+ */
+export function markKind(el, kind) {
+  if (!el.hasAttribute('data-keybinds')) el.setAttribute('data-keybinds', kind)
+}
+
+export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+
+/**
+ * Parse modifiers from a binding string
+ * @param {string[]} parts
+ * @returns {{ mods: Modifiers, remaining: string[] }}
+ */
+export function parseMods(parts) {
+  const mods = { ctrl: false, alt: false, shift: false, meta: false }
+  const remaining = []
+
+  for (const part of parts) {
+    if (part === 'ctrl' || part === 'control') mods.ctrl = true
+    else if (part === 'alt' || part === 'option') mods.alt = true
+    else if (part === 'shift') mods.shift = true
+    else if (part === 'meta' || part === 'cmd' || part === 'command') mods.meta = true
+    else if (part === '$mod') {
+      if (isMac) mods.meta = true
+      else mods.ctrl = true
+    }
+    else remaining.push(part)
+  }
+
+  return { mods, remaining }
+}
+
+/**
+ * How a modifier in a binding is shown, null if the part isn't a modifier
+ * @param {string} p - lowercase
+ * @returns {string | null}
+ */
+export function formatModPart(p) {
+  if (p === '$mod') return isMac ? '⌘' : 'Ctrl'
+  if (p === 'ctrl' || p === 'control') return isMac ? '⌃' : 'Ctrl'
+  if (p === 'alt' || p === 'option') return isMac ? '⌥' : 'Alt'
+  if (p === 'shift') return isMac ? '⇧' : 'Shift'
+  if (p === 'meta' || p === 'cmd' || p === 'command') return '⌘'
+  return null
+}
+
+/**
+ * The modifiers held during an event, as a binding writes them ("$mod" for the platform's)
+ * @param {KeyboardEvent | MouseEvent} event
+ * @param {boolean} shift - Whether to include Shift
+ * @returns {string[]}
+ */
+export function eventModParts(event, shift = event.shiftKey) {
+  const parts = []
+  if (isMac ? event.metaKey : event.ctrlKey) parts.push('$mod')
+  if (isMac ? event.ctrlKey : event.metaKey) parts.push(isMac ? 'ctrl' : 'meta')
+  if (event.altKey) parts.push('alt')
+  if (shift) parts.push('shift')
+  return parts
+}
+
+export const RELEASE_SUFFIX = ':up'
+
+/**
+ * Split a lowercase binding into its press/release flag and the rest.
+ * A trailing ":up" marks a release binding.
+ * @param {string} lower
+ * @returns {{ body: string, release: boolean }}
+ */
+export function splitRelease(lower) {
+  const trimmed = lower.trim()
+  if (trimmed.endsWith(RELEASE_SUFFIX)) {
+    return { body: trimmed.slice(0, -RELEASE_SUFFIX.length), release: true }
+  }
+  return { body: trimmed, release: false }
+}
+
+/**
+ * A binding's press form if it's a release, its release form otherwise
+ * @param {string} binding
+ * @returns {string}
+ */
+export function flipRelease(binding) {
+  const { body, release } = splitRelease(binding.toLowerCase())
+  return release ? binding.trim().slice(0, body.length) : binding.trim() + RELEASE_SUFFIX
+}
+
+/**
+ * Format a binding's parts, adding a trailing "Release" part for ":up" bindings
+ * @param {string} binding
+ * @param {(part: string) => string} formatPart
+ * @returns {string[]}
+ */
+export function formatWithRelease(binding, formatPart) {
+  const { body, release } = splitRelease(binding.toLowerCase())
+  const source = release ? binding.trim().slice(0, body.length) : binding
+  const parts = source.split('+').map(formatPart)
+  if (release) parts.push('Release')
+  return parts
+}
+
+/**
+ * Normalize modifiers to canonical prefix (e.g., "ctrl+alt+")
+ * @param {Modifiers} mods
+ * @returns {string}
+ */
+export function modsToPrefix(mods) {
+  let s = ''
+  if (mods.ctrl) s += 'ctrl+'
+  if (mods.alt) s += 'alt+'
+  if (mods.shift) s += 'shift+'
+  if (mods.meta) s += 'meta+'
+  return s
+}
+
+/** @type {Modifiers} */
+export const NO_MODS = { ctrl: false, alt: false, shift: false, meta: false }
+
+/**
+ * Modifiers held during an event
+ * @param {KeyboardEvent | MouseEvent} event
+ * @returns {Modifiers}
+ */
+export function eventMods(event) {
+  return { ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey, meta: event.metaKey }
+}
+
+/**
+ * Whether every modifier in `required` is among `held`
+ * @param {Modifiers} required
+ * @param {Modifiers} held
+ */
+export function holdsAll(required, held) {
+  return (!required.ctrl || held.ctrl) && (!required.alt || held.alt) &&
+    (!required.shift || held.shift) && (!required.meta || held.meta)
+}
+
+/**
+ * Check if a command is active given current context
+ * @param {{ when?: ((ctx: Record<string, unknown>) => boolean) | undefined }} command
+ * @param {Record<string, unknown>} context
+ * @returns {boolean}
+ */
+export function isActive(command, context) {
+  if (!command.when) return true
+  return command.when(context)
+}
+
+const OVERLAYS = '[data-keybinds="command-palette"][open], [data-keybinds="settings"][open], [data-keybinds="context-menu"][open], [data-keybinds="basic-context-menu"][open]'
+
+/**
+ * Whether an element is inside a component whose own keyboard handling takes over while it's open
+ * @param {Element | null} tgt
+ * @returns {boolean}
+ */
+export function overlayOpen(tgt) {
+  return !!tgt?.closest?.(OVERLAYS)
+}
+
+/** Whether any such component is open, for inputs whose events have no target (gamepads) */
+export function anyOverlayOpen() {
+  return typeof document !== 'undefined' && !!document.querySelector(OVERLAYS)
+}
+
+/**
+ * Whether an event's target is somewhere text is typed
+ * @param {EventTarget | null} tgt
+ */
+export function inInput(tgt) {
+  const el = /** @type {Element | null} */ (tgt)
+  return el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' ||
+    (typeof HTMLElement !== 'undefined' && el instanceof HTMLElement && el.isContentEditable)
+}
+
+// Command fields that hold bindings, so a binding no input reads is an error rather than ignored
+const BINDING_FIELDS = /** @type {const} */ (['keys', 'mouse', 'gamepad'])
+
+/**
+ * @typedef {Object} KeybindsOptions
+ * @property {Input[]} [inputs] - What to listen to: e.g. [keys(), mouse()]. A command bound
+ *   through an input that isn't here is an error
+ * @property {EventTarget} [target] - Where to listen (default: window)
+ * @property {(cmd: Command, ctx: Record<string, unknown>) => void} [onExecute] - Called after a command consumes an event
+ * @property {boolean} [capture] - Listen in the capture phase, so a bound key reaches its command before
+ *   anything under the target (an editor, say) handles it. A command that isn't active, or returns false,
+ *   leaves the event alone.
+ * @property {AxisDef[]} [axes] - Continuous inputs, read with `axis(id)` on what keybinds() returns
+ */
+
+/**
+ * Create keybind handler
+ *
+ * @param {Command[]} commands - Array of command definitions
+ * @param {() => Record<string, unknown>} [getContext] - Returns current context state
+ * @param {KeybindsOptions} [options] - Options
+ *
+ * @example
+ * const cleanup = keybinds([
+ *   {
+ *     id: 'delete',
+ *     label: 'Delete selected',
+ *     category: 'Edit',
+ *     keys: ['Backspace', 'Delete'],
+ *     when: ctx => ctx.hasSelection && !ctx.isEditing,
+ *     execute: () => deleteSelected()  // return false to propagate
+ *   },
+ * ], () => ({ hasSelection: selectedId() !== null, isEditing: editingId() !== null }),
+ *   { inputs: [keys(), mouse()] })
+ * @returns {(() => void) & { held: (id: string) => boolean, axis: (id: string) => AxisValue }} Cleanup function, with
+ *   `held(id)`: whether a command is held right now, and `axis(id)`: an axis's value
+ */
+export function keybinds(commands, getContext = () => ({}), options = {}) {
+  const { inputs = [], target = window, onExecute, capture = false, axes = [] } = options
+
+  for (const field of BINDING_FIELDS) {
+    if (inputs.some((i) => i.field === field)) continue
+    const cmd = commands.find((c) => c[field]?.length)
+    if (cmd) throw new Error(`Command "${cmd.id}" has ${field} bindings, but no input reads ${field}`)
+  }
+  if (axes.some((a) => a.axes.length) && !inputs.some((i) => i.axis)) {
+    throw new Error('There are axes, but no input reads them')
+  }
+
+  /**
+   * @param {Command} cmd
+   * @param {Record<string, unknown>} context
+   * @param {Event} event
+   * @returns {boolean}
+   */
+  function tryExecute(cmd, context, event) {
+    const result = cmd.execute(context, event)
+    // Return false from execute to propagate (not consume)
+    if (result !== false) {
+      event.preventDefault()
+      event.stopPropagation()
+      onExecute?.(cmd, context)
+      return true
+    }
+    return false
+  }
+
+  /** @type {Map<string, Press>[]} */
+  const allPresses = []
+  /** @type {InputHandle[]} */
+  const handles = []
+
+  for (const input of inputs) {
+    /** @type {Map<string, Command[]>} */
+    const exact = new Map()
+    /** @type {Map<string, { cmd: Command, mods: Modifiers }[]>} */
+    const loose = new Map()
+    if (!input.axis) {
+      for (const cmd of commands) {
+        for (const binding of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
+          let parsed
+          try {
+            parsed = input.parse(binding)
+          } catch (e) {
+            throw new Error(`Command "${cmd.id}": ${e instanceof Error ? e.message : String(e)}`)
+          }
+          if (cmd.anyModifiers) add(loose, parsed.loose, { cmd, mods: parsed.mods })
+          else add(exact, parsed.lookup, cmd)
+        }
+      }
+    }
+    /** @type {Map<string, Press>} */
+    const presses = new Map()
+    allPresses.push(presses)
+
+    /** @type {Dispatch} */
+    const d = {
+      target,
+      capture,
+      bound: exact.size > 0 || loose.size > 0,
+      axes,
+      context: getContext,
+      presses,
+      candidates(lookups, looseLookups, mods) {
+        /** @type {Command[] | undefined} */
+        let found
+        for (const l of lookups) {
+          found = exact.get(l)
+          if (found) break
+        }
+        /** @type {{ cmd: Command, mods: Modifiers }[] | undefined} */
+        let anyMods
+        for (const l of looseLookups) {
+          anyMods = loose.get(l)
+          if (anyMods) break
+        }
+        const extra = (anyMods ?? []).filter((b) => holdsAll(b.mods, mods) && !found?.includes(b.cmd)).map((b) => b.cmd)
+        if (extra.length === 0) return found
+        return found ? [...found, ...extra] : extra
+      },
+      fire(candidates, event, { inInput = false, press } = {}) {
+        const context = getContext()
+        for (const cmd of candidates) {
+          if (inInput && !cmd.captureInput) continue
+          if (!isActive(cmd, context)) continue
+          if (tryExecute(cmd, context, event)) {
+            press?.fired.add(cmd)
+            return cmd
+          }
+        }
+        return null
+      },
+      release(candidates, press, event, { blocked = false, inInput = false } = {}) {
+        const context = getContext()
+        let consumed = false
+        for (const cmd of candidates) {
+          if (press.fired.has(cmd)) {
+            if (tryExecute(cmd, context, event)) consumed = true
+            continue
+          }
+          if (consumed || blocked) continue
+          if (inInput && !cmd.captureInput) continue
+          if (!isActive(cmd, context)) continue
+          if (tryExecute(cmd, context, event)) consumed = true
+        }
+        return consumed
+      },
+      isActive: (cmd) => isActive(cmd, getContext()),
+      execute: (cmd, event) => tryExecute(cmd, getContext(), event),
+    }
+    handles.push(input.listen(d))
+  }
+
+  /**
+   * Whether a command is held right now: its press fired and that key or button hasn't come up.
+   * For controls read every frame (a game's movement, say) rather than acted on per event.
+   * @param {string} id
+   */
+  function held(id) {
+    for (const presses of allPresses) {
+      for (const press of presses.values()) {
+        for (const cmd of press.fired) if (cmd.id === id) return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * An axis's value right now. Reading it takes the mouse movement since its last read
+   * @param {string} id
+   * @returns {AxisValue}
+   */
+  function axis(id) {
+    for (const h of handles) if (h.axis) return h.axis(id)
+    return { position: 0, delta: 0 }
+  }
+
+  return Object.assign(() => {
+    for (const h of handles) h()
+    for (const presses of allPresses) presses.clear()
+  }, { held, axis })
+}
+
+/**
+ * @template V
+ * @param {Map<string, V[]>} map
+ * @param {string} k
+ * @param {V} v
+ */
+function add(map, k, v) {
+  const list = map.get(k)
+  if (list) list.push(v)
+  else map.set(k, [v])
+}
+
+/**
+ * Validate all commands upfront (call on init to catch typos early)
+ * @param {Command[]} commands
+ * @param {Input[]} inputs - The inputs whose bindings to check
+ * @returns {true}
+ * @throws {Error} if any binding is invalid
+ */
+export function validateCommands(commands, inputs) {
+  for (const cmd of commands) {
+    if (!cmd.id) {
+      throw new Error('Command missing id')
+    }
+    for (const input of inputs) {
+      for (const binding of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
+        try {
+          input.parse(binding)
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          throw new Error(`Command "${cmd.id}": ${msg}`)
+        }
+      }
+    }
+  }
+  return true
+}
+
+/**
+ * Execute a command by id
+ * @param {Command[]} commands
+ * @param {string} id
+ * @param {Record<string, unknown>} [context]
+ * @returns {boolean}
+ */
+export function executeCommand(commands, id, context = {}) {
+  const cmd = commands.find(c => c.id === id)
+  if (cmd && isActive(cmd, context)) {
+    cmd.execute(context)
+    return true
+  }
+  return false
+}
+
+/**
+ * Check if a binding string conflicts with any command in the schema
+ *
+ * @param {Schema} schema - The binding schema to check against
+ * @param {string} bindingStr - The binding string to check
+ * @param {Input} input - The input the binding is for
+ * @param {string} [excludeId] - Command ID to exclude from conflict check
+ * @returns {{ commandId: string, label: string } | null}
+ */
+export function findConflict(schema, bindingStr, input, excludeId) {
+  let candidate
+  try {
+    candidate = input.parse(bindingStr).lookup
+  } catch {
+    return null
+  }
+
+  for (const [id, binding] of Object.entries(schema)) {
+    if (id === excludeId) continue
+    const bindings = /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (binding)[input.field])
+    if (!bindings) continue
+
+    for (const b of bindings) {
+      try {
+        if (input.parse(b).lookup === candidate) {
+          return { commandId: id, label: binding.label }
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * A command's bindings through each input, as display parts, in the order of `inputs`
+ * @param {Command} cmd
+ * @param {Input[]} inputs
+ * @returns {string[][]}
+ */
+export function bindingParts(cmd, inputs) {
+  /** @type {string[][]} */
+  const out = []
+  for (const input of inputs) {
+    if (input.axis) continue
+    for (const b of /** @type {string[] | undefined} */ (/** @type {Record<string, unknown>} */ (cmd)[input.field]) ?? []) {
+      out.push(input.format(b))
+    }
+  }
+  return out
+}

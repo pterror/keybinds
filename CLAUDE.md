@@ -8,10 +8,15 @@ Declarative, contextual keybindings for the web. Zero-dependency JavaScript libr
 
 ## Architecture
 
-Single-file library (`src/index.js`) with JSDoc types checked via `jsconfig.json`.
+One module per part, JSDoc types checked via `tsconfig.json`; `src/index.js` re-exports everything.
+
+- `src/core.js` — `keybinds()`, the dispatcher: commands, context, presses, `held`. Knows no particular input
+- `src/keys.js`, `src/mouse.js`, `src/gamepad.js`, `src/axes.js` — inputs: each parses, formats, records and listens for its own bindings
+- `src/search.js`, `src/store.js`, `src/modifiers.js`, `src/hub.js`, `src/components/*.js`
 
 Key concepts:
-- **Commands** — data objects combining triggers (keys/mouse), labels, context conditions, and handlers
+- **Commands** — data objects combining triggers (keys/mouse/gamepad), labels, context conditions, and handlers
+- **Inputs** — passed to `keybinds()` and the hub (`inputs: [keys(), mouse()]`); an app ships only the ones it uses
 - **Schema/Handlers split** — `defineSchema` for binding data, `fromBindings` to attach handlers
 - **BindingsStore** — reactive user overrides, kept in localStorage or any `BindingsStorage`
 - **Web components** — palette, cheatsheet, settings, context menus, radial menu (shadow DOM; each marks itself `data-keybinds="<kind>"`; `styles/palette.css` themes them from `--keybinds-*` variables)

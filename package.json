@@ -9,6 +9,14 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.js"
     },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./src/*.js"
+    },
+    "./components/*": {
+      "types": "./dist/components/*.d.ts",
+      "default": "./src/components/*.js"
+    },
     "./styles/palette.css": "./styles/palette.css"
   },
   "scripts": {

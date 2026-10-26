@@ -14,7 +14,12 @@ import {
   formatMouseParts,
   formatGamepadParts,
   formatAxisParts,
-  keybinds,
+  keybinds as listen,
+  keys as keysInput,
+  mouse as mouseInput,
+  gamepad as gamepadInput,
+  axes as axesInput,
+  RadialMenu,
   BindingsStore,
   filterByMenu,
   eventToBindingString,
@@ -29,6 +34,23 @@ import {
   createComponent,
   CommandPalette,
 } from './index.js'
+
+/** One of each input, for findConflict */
+const INPUT = { keys: keysInput(), mouse: mouseInput(), gamepad: gamepadInput(), axes: axesInput() }
+/** Every input, which most tests listen with */
+const ALL = { inputs: Object.values(INPUT) }
+const COMPONENTS = [CommandPalette, KeybindCheatsheet, KeybindSettings, ContextMenu]
+
+/**
+ * keybinds() listening to every input
+ * @param {import('./index.js').Command[]} commands
+ * @param {(() => Record<string, unknown>) | undefined} [context]
+ * @param {import('./index.js').KeybindsOptions & { wheel?: { step?: number, idle?: number } }} [options]
+ */
+const keybinds = (commands, context, options = {}) => {
+  const { wheel, ...rest } = options
+  return listen(commands, context, { inputs: [keysInput(), mouseInput(wheel ? { wheel } : {}), gamepadInput(), axesInput()], ...rest })
+}
 
 // --- Pure logic tests ---
 
@@ -92,36 +114,36 @@ describe('validateCommands', () => {
     expect(validateCommands([
       { id: 'save', label: 'Save', keys: ['$mod+s'], execute: () => {} },
       { id: 'click', label: 'Click', mouse: ['Click'], execute: () => {} },
-    ])).toBe(true)
+    ], ALL.inputs)).toBe(true)
   })
 
   test('throws on missing id', () => {
-    expect(() => validateCommands([/** @type {any} */ ({ label: 'X', execute: () => {} })]))
+    expect(() => validateCommands([/** @type {any} */ ({ label: 'X', execute: () => {} })], ALL.inputs))
       .toThrow('Command missing id')
   })
 
   test('throws on invalid key', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', keys: ['$mod+banana'], execute: () => {} },
-    ])).toThrow('Unknown key "banana"')
+    ], ALL.inputs)).toThrow('Unknown key "banana"')
   })
 
   test('throws on modifier-only key binding', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', keys: ['$mod'], execute: () => {} },
-    ])).toThrow('no key (only modifiers)')
+    ], ALL.inputs)).toThrow('no key (only modifiers)')
   })
 
   test('throws on multi-key binding', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', keys: ['a+b'], execute: () => {} },
-    ])).toThrow('multiple keys')
+    ], ALL.inputs)).toThrow('multiple keys')
   })
 
   test('throws on invalid mouse binding', () => {
     expect(() => validateCommands([
       { id: 'x', label: 'X', mouse: ['DoubleClick'], execute: () => {} },
-    ])).toThrow('Unknown mouse button')
+    ], ALL.inputs)).toThrow('Unknown mouse button')
   })
 })
 
@@ -485,6 +507,18 @@ describe('formatMouseParts', () => {
 // Use happy-dom elements as event targets so dispatched events are accepted
 
 describe('keybinds', () => {
+  test('listens only through the inputs it is given, and a binding none of them reads is an error', () => {
+    const fn = mock(() => {})
+    const target = document.createElement('div')
+    const pad = { id: 'jump', label: 'Jump', gamepad: ['a'], execute: () => {} }
+    expect(() => listen([pad], undefined, { target, inputs: [keysInput()] })).toThrow('Command "jump" has gamepad bindings, but no input reads gamepad')
+    expect(() => listen([], undefined, { target, axes: [{ id: 'x', label: 'X', axes: ['mouse:x'] }] })).toThrow('no input reads them')
+    const cleanup = listen([{ id: 's', label: 'S', keys: ['s'], execute: fn }], undefined, { target, inputs: [keysInput()] })
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS' }))
+    expect(fn).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
   test('dispatches matching key command', () => {
     const fn = mock(() => {})
     const target = document.createElement('div')
@@ -820,26 +854,26 @@ describe('findConflict', () => {
   }
 
   test('returns null when no conflict', () => {
-    expect(findConflict(schema, '$mod+k', 'keys')).toBeNull()
+    expect(findConflict(schema, '$mod+k', INPUT.keys)).toBeNull()
   })
 
   test('finds key conflict', () => {
-    const conflict = findConflict(schema, '$mod+s', 'keys')
+    const conflict = findConflict(schema, '$mod+s', INPUT.keys)
     expect(conflict).toEqual({ commandId: 'save', label: 'Save' })
   })
 
   test('finds mouse conflict', () => {
-    const conflict = findConflict(schema, '$mod+click', 'mouse')
+    const conflict = findConflict(schema, '$mod+click', INPUT.mouse)
     expect(conflict).toEqual({ commandId: 'open', label: 'Open' })
   })
 
   test('excludes self by id', () => {
-    expect(findConflict(schema, '$mod+s', 'keys', 'save')).toBeNull()
+    expect(findConflict(schema, '$mod+s', INPUT.keys, 'save')).toBeNull()
   })
 
   test('normalizes through parse for accurate comparison', () => {
     // ctrl+s should conflict with $mod+s on non-Mac
-    const conflict = findConflict(schema, 'ctrl+s', 'keys')
+    const conflict = findConflict(schema, 'ctrl+s', INPUT.keys)
     expect(conflict).toEqual({ commandId: 'save', label: 'Save' })
   })
 })
@@ -942,6 +976,7 @@ describe('KeybindSettings', () => {
 
   function createSettings() {
     const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
+    el.inputs = ALL.inputs
     const store = new BindingsStore(schema, 'test:settings')
     el.store = store
     document.body.appendChild(el)
@@ -1455,13 +1490,13 @@ describe('side buttons', () => {
   })
 
   test('parse, format and conflict handle back/forward', () => {
-    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['Back', 'forward', 'ctrl+BackClick'], execute: () => {} }])).not.toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['Back', 'forward', 'ctrl+BackClick'], execute: () => {} }], ALL.inputs)).not.toThrow()
     expect(formatMouseParts('Back')).toEqual(['Back'])
     expect(formatMouseParts('ctrl+ForwardClick')).toEqual(['Ctrl', 'Forward'])
     const schema = { s: { label: 'S', mouse: ['back'] } }
-    expect(findConflict(schema, 'BackClick', 'mouse')?.commandId).toBe('s')
-    expect(findConflict(schema, 'scrollup', 'mouse')).toBeNull()
-    expect(findConflict(schema, 'forward', 'mouse')).toBeNull()
+    expect(findConflict(schema, 'BackClick', INPUT.mouse)?.commandId).toBe('s')
+    expect(findConflict(schema, 'scrollup', INPUT.mouse)).toBeNull()
+    expect(findConflict(schema, 'forward', INPUT.mouse)).toBeNull()
   })
 
   test('eventToMouseBindingString names side buttons and rejects unnamed ones', () => {
@@ -1498,8 +1533,8 @@ const fakePads = () => {
 
 describe('gamepad', () => {
   test('parses names and aliases, and rejects unknown buttons', () => {
-    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['a', 'south', 'rt:up', 'dpadUp'], execute: () => {} }])).not.toThrow()
-    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['shift+a'], execute: () => {} }])).toThrow(/Unknown gamepad button/)
+    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['a', 'south', 'rt:up', 'dpadUp'], execute: () => {} }], ALL.inputs)).not.toThrow()
+    expect(() => validateCommands([{ id: 'j', label: 'J', gamepad: ['shift+a'], execute: () => {} }], ALL.inputs)).toThrow(/Unknown gamepad button/)
   })
 
   test('formats for display', () => {
@@ -1572,6 +1607,7 @@ describe('gamepad', () => {
     const pads = fakePads()
     pads.set([])
     const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
+    el.inputs = ALL.inputs
     el.store = new BindingsStore({ jump: { label: 'Jump', keys: ['space'] } }, 'test:pad-settings')
     document.body.appendChild(el)
     el.open = true
@@ -1589,12 +1625,12 @@ describe('gamepad', () => {
 
   test('conflicts, overrides and the hub', () => {
     const schema = { jump: { label: 'Jump', gamepad: ['a'] }, fire: { label: 'Fire', gamepad: ['rt'] } }
-    expect(findConflict(schema, 'south', 'gamepad', 'fire')).toEqual({ commandId: 'jump', label: 'Jump' })
+    expect(findConflict(schema, 'south', INPUT.gamepad, 'fire')).toEqual({ commandId: 'jump', label: 'Jump' })
     expect(mergeBindings(schema, { jump: { gamepad: ['b'] } })['jump']?.gamepad).toEqual(['b'])
-    const hub = new CommandHub({ storageKey: 't', listen: { target: document.createElement('div') } })
+    const hub = new CommandHub({ ...ALL, storageKey: 't', listen: { target: document.createElement('div') } })
     hub.setSource('a', () => [{ id: 'jump', label: 'Jump', gamepad: ['a'], execute: () => {} }])
     hub.refresh()
-    expect(hub.gamepadFor('jump')).toEqual(['A'])
+    expect(hub.bindingsFor('jump', 'gamepad')).toEqual(['A'])
     hub.destroy()
   })
 })
@@ -1676,10 +1712,10 @@ describe('axes', () => {
     const target = document.createElement('div')
     /** @type {Record<string, import('./index.js').BindingOverrides>} */
     const kept = { global: { strafe: { axes: ['keys:j/l'] } } }
-    const hub = new CommandHub({ listen: { target }, storage: (scope) => ({ load: () => kept[scope] ?? {}, save: (o) => { kept[scope] = o } }) })
+    const hub = new CommandHub({ ...ALL, listen: { target }, storage: (scope) => ({ load: () => kept[scope] ?? {}, save: (o) => { kept[scope] = o } }) })
     hub.setAxes('game', () => [{ id: 'strafe', label: 'Strafe', axes: ['keys:a/d'] }])
     hub.refresh()
-    expect(hub.axesFor('strafe')).toEqual(['J / L'])
+    expect(hub.bindingsFor('strafe', 'axes')).toEqual(['J / L'])
     target.dispatchEvent(kbd('keydown', 'l', 'KeyL'))
     expect(hub.axis('strafe').position).toBe(1)
     hub.destroy()
@@ -1687,6 +1723,7 @@ describe('axes', () => {
 
   test('the settings panel records two keys as an axis, and inverts it', () => {
     const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
+    el.inputs = ALL.inputs
     el.store = new BindingsStore({ strafe: { label: 'Strafe', axes: ['keys:a/d'] } }, { load: () => ({}), save: () => {} })
     document.body.appendChild(el)
     el.open = true
@@ -1749,7 +1786,7 @@ describe('held', () => {
 
   test('the hub answers too', () => {
     const target = document.createElement('div')
-    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    const hub = new CommandHub({ ...ALL, storageKey: 't', listen: { target } })
     hub.setSource('a', () => [{ id: 'fwd', label: 'Forward', keys: ['w'], execute: () => {} }])
     hub.refresh()
     target.dispatchEvent(kbd('keydown', 'w', 'KeyW'))
@@ -2063,10 +2100,10 @@ describe('press and release bindings', () => {
   })
 
   test('validation accepts :up and rejects scroll release and empty release', () => {
-    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+k:up', 'Escape:UP'], mouse: ['middle:up'], execute: () => {} }])).not.toThrow()
-    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['scrollup:up'], execute: () => {} }])).toThrow()
-    expect(() => validateCommands([{ id: 'x', label: 'X', keys: [':up'], execute: () => {} }])).toThrow()
-    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+:up'], execute: () => {} }])).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+k:up', 'Escape:UP'], mouse: ['middle:up'], execute: () => {} }], ALL.inputs)).not.toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', mouse: ['scrollup:up'], execute: () => {} }], ALL.inputs)).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: [':up'], execute: () => {} }], ALL.inputs)).toThrow()
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['ctrl+:up'], execute: () => {} }], ALL.inputs)).toThrow()
   })
 
   test('format adds a Release part', () => {
@@ -2076,10 +2113,10 @@ describe('press and release bindings', () => {
 
   test('conflicts treat press and release as different inputs', () => {
     const schema = { s: { label: 'S', keys: ['k'], mouse: ['middle'] } }
-    expect(findConflict(schema, 'k:up', 'keys')).toBeNull()
-    expect(findConflict(schema, 'middle:up', 'mouse')).toBeNull()
-    expect(findConflict(schema, 'K', 'keys')?.commandId).toBe('s')
-    expect(findConflict({ s: { label: 'S', keys: ['k:up'] } }, 'K:UP', 'keys')?.commandId).toBe('s')
+    expect(findConflict(schema, 'k:up', INPUT.keys)).toBeNull()
+    expect(findConflict(schema, 'middle:up', INPUT.mouse)).toBeNull()
+    expect(findConflict(schema, 'K', INPUT.keys)?.commandId).toBe('s')
+    expect(findConflict({ s: { label: 'S', keys: ['k:up'] } }, 'K:UP', INPUT.keys)?.commandId).toBe('s')
   })
 
   test('event to binding string gives :up for keyup and mouseup', () => {
@@ -2117,6 +2154,7 @@ describe('KeybindSettings release recording', () => {
 
   function setup() {
     const el = /** @type {import('./index.js').KeybindSettings} */ (document.createElement('keybinds-settings'))
+    el.inputs = ALL.inputs
     const store = new BindingsStore(schema, 'test:release-settings')
     el.store = store
     // The runtime's CustomEvent is not a happy-dom Event, so the panel's own events can't be dispatched here
@@ -2301,7 +2339,7 @@ describe('key aliases', () => {
   }
 
   test('aliases and arrow names conflict and share a release', () => {
-    expect(findConflict({ s: { label: 'S', keys: ['arrowup'] } }, 'up', 'keys')?.commandId).toBe('s')
+    expect(findConflict({ s: { label: 'S', keys: ['arrowup'] } }, 'up', INPUT.keys)?.commandId).toBe('s')
     const up = mock(() => {})
     const target = document.createElement('div')
     const cleanup = keybinds([{ id: 'x', label: 'X', keys: ['left:up'], execute: up }], undefined, { target })
@@ -2312,7 +2350,7 @@ describe('key aliases', () => {
   })
 
   test('error for an unknown key names what was typed', () => {
-    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['nope'], execute: () => {} }])).toThrow('Unknown key "nope"')
+    expect(() => validateCommands([{ id: 'x', label: 'X', keys: ['nope'], execute: () => {} }], ALL.inputs)).toThrow('Unknown key "nope"')
   })
 
   test('modifier and mouse aliases fire', () => {
@@ -2528,7 +2566,7 @@ describe('overlays under any tag name', () => {
     document.body.appendChild(target)
     const fn = mock(() => {})
     const cleanup = keybinds([{ id: 'go', label: 'Go', keys: ['Enter'], execute: fn }], undefined, { target })
-    const menu = createComponent('context-menu')
+    const menu = createComponent(ContextMenu)
     target.appendChild(menu)
     menu.setAttribute('open', '')
     menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
@@ -2702,10 +2740,10 @@ describe('cheatsheet hold trigger', () => {
 
 describe('createComponent', () => {
   test('uses the usual name, and its own when another copy of the library took it', () => {
-    const palette = createComponent('command-palette')
+    const palette = createComponent(CommandPalette)
     expect(palette).toBeInstanceOf(CommandPalette)
     if (!customElements.get('keybinds-radial-menu')) customElements.define('keybinds-radial-menu', class extends HTMLElement {})
-    const radial = createComponent('radial-menu')
+    const radial = createComponent(RadialMenu)
     expect(radial.tagName.toLowerCase()).toMatch(/^keybinds-radial-menu-\d+$/)
     document.body.appendChild(radial)
     expect(radial.getAttribute('data-keybinds')).toBe('radial-menu')
@@ -2723,7 +2761,7 @@ describe('CommandHub', () => {
   test('rebindings can be kept in custom storage, per scope', () => {
     /** @type {Record<string, import('./index.js').BindingOverrides>} */
     const kept = {}
-    const hub = new CommandHub({
+    const hub = new CommandHub({ ...ALL,
       listen: { target: document.createElement('div') },
       storage: (scope) => ({ load: () => kept[scope] ?? {}, save: (o) => { kept[scope] = o } }),
     })
@@ -2738,7 +2776,7 @@ describe('CommandHub', () => {
 
   test('commands from every source fire on their keys, and the first source wins an id', () => {
     const target = document.createElement('div')
-    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    const hub = new CommandHub({ ...ALL, storageKey: 't', listen: { target } })
     const mine = cmd()
     const theirs = cmd({ label: 'Other save' })
     hub.setSource('a', () => [mine])
@@ -2753,7 +2791,7 @@ describe('CommandHub', () => {
 
   test("a person's rebinding takes effect at once and is kept per scope", () => {
     const target = document.createElement('div')
-    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    const hub = new CommandHub({ ...ALL, storageKey: 't', listen: { target } })
     const save = cmd()
     hub.setSource('a', () => [save])
     hub.refresh()
@@ -2762,16 +2800,16 @@ describe('CommandHub', () => {
     expect(save.execute).not.toHaveBeenCalled()
     target.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ctrlKey: true }))
     expect(save.execute).toHaveBeenCalledTimes(1)
-    expect(hub.keysFor('save')).toEqual(['Ctrl+D'])
+    expect(hub.bindingsFor('save', 'keys')).toEqual(['Ctrl+D'])
     hub.setScope('other')
     hub.refresh()
-    expect(hub.keysFor('save')).toEqual(['Ctrl+S'])
+    expect(hub.bindingsFor('save', 'keys')).toEqual(['Ctrl+S'])
     hub.destroy()
   })
 
   test('one unreadable binding leaves the others working', () => {
     const target = document.createElement('div')
-    const hub = new CommandHub({ storageKey: 't', listen: { target } })
+    const hub = new CommandHub({ ...ALL, storageKey: 't', listen: { target } })
     const save = cmd()
     const broken = cmd({ id: 'broken', keys: ['ctrl+notakey'] })
     const error = console.error
@@ -2781,14 +2819,14 @@ describe('CommandHub', () => {
     console.error = error
     press(target)
     expect(save.execute).toHaveBeenCalledTimes(1)
-    expect(hub.keysFor('broken')).toEqual([])
+    expect(hub.bindingsFor('broken', 'keys')).toEqual([])
     hub.destroy()
   })
 
   test('adapt turns other definitions into commands', () => {
     const target = document.createElement('div')
     const ran = mock(() => {})
-    const hub = new CommandHub({ storageKey: 't', listen: { target }, adapt: (/** @type {any} */ d) => ({ ...d, execute: d.run }) })
+    const hub = new CommandHub({ ...ALL, storageKey: 't', listen: { target }, adapt: (/** @type {any} */ d) => ({ ...d, execute: d.run }) })
     hub.setSource('a', () => [{ id: 'save', label: 'Save', keys: ['ctrl+s'], run: ran }])
     hub.refresh()
     press(target)
@@ -2800,7 +2838,7 @@ describe('CommandHub', () => {
 
   test('command buttons run their command and are disabled while it is unavailable', () => {
     let available = false
-    const hub = new CommandHub({ storageKey: 't', listen: { target: document.createElement('div') } })
+    const hub = new CommandHub({ ...ALL, storageKey: 't', listen: { target: document.createElement('div') } })
     const save = cmd({ when: () => available })
     hub.setSource('a', () => [save])
     hub.refresh()
@@ -2822,7 +2860,7 @@ describe('CommandHub', () => {
   test('with a host, it makes the components and keeps them in step', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const hub = new CommandHub({ storageKey: 't', host, listen: { target: document.createElement('div') } })
+    const hub = new CommandHub({ ...ALL, components: COMPONENTS, storageKey: 't', host, listen: { target: document.createElement('div') } })
     hub.setSource('a', () => [cmd(), cmd({ id: 'secret', label: 'Secret', hidden: true })])
     hub.refresh()
     expect(hub.palette?.commands.map((c) => c.id)).toEqual(['save'])
@@ -2835,7 +2873,7 @@ describe('CommandHub', () => {
   test('closing the palette gives focus back to where it was', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const hub = new CommandHub({ storageKey: 't', host, listen: { target: document.createElement('div') } })
+    const hub = new CommandHub({ ...ALL, components: COMPONENTS, storageKey: 't', host, listen: { target: document.createElement('div') } })
     const editor = document.createElement('textarea')
     document.body.appendChild(editor)
     editor.focus()
@@ -2852,7 +2890,7 @@ describe('CommandHub', () => {
   test('an open menu or palette keeps the context it was opened in', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const hub = new CommandHub({ storageKey: 't', host, listen: { target: document.createElement('div') } })
+    const hub = new CommandHub({ ...ALL, components: COMPONENTS, storageKey: 't', host, listen: { target: document.createElement('div') } })
     let editing = true
     hub.addContext(() => ({ editing }))
     hub.setSource('a', () => [cmd({ menu: 'text' })])

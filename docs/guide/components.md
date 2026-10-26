@@ -126,6 +126,7 @@ Rebindable keyboard shortcuts panel with conflict detection.
 | Property | Type | Description |
 |----------|------|-------------|
 | `store` | `BindingsStore` | Reactive bindings store instance |
+| `inputs` | `Input[]` | Which bindings are shown and can be recorded (default: keys only) |
 | `open` | `boolean` | Show/hide the settings panel |
 
 ### Attributes
@@ -139,13 +140,13 @@ Rebindable keyboard shortcuts panel with conflict detection.
 | Event | Detail | Description |
 |-------|--------|-------------|
 | `close` | - | Fired when settings panel is dismissed |
-| `change` | `{ commandId, keys?, mouse? }` | Fired when a binding is changed |
+| `change` | `{ commandId, bindings }` | Fired when a binding is changed; `bindings` has a list per input's field |
 | `reset` | `{ commandId? }` | Fired when bindings are reset |
 
 ### Usage
 
 ```js
-import { BindingsStore, defineSchema, registerComponents } from 'keybinds'
+import { BindingsStore, defineSchema, registerComponents, keys, mouse } from 'keybinds'
 
 const schema = defineSchema({
   save: { label: 'Save', category: 'File', keys: ['$mod+s'] },
@@ -156,6 +157,7 @@ const store = new BindingsStore(schema, 'myapp:keybinds')
 registerComponents()
 
 const settings = document.querySelector('keybinds-settings')
+settings.inputs = [keys(), mouse()]
 settings.store = store
 
 // Open settings

@@ -24,6 +24,7 @@ Custom element: `<keybinds-command-palette>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `commands` | `Command[]` | Commands to display and execute |
+| `inputs` | `Input[]` | How bindings are shown: an item shows its first (default: keys only) |
 | `context` | `object` | Context for `when` evaluation |
 | `source` | `(query: string) => Command[] \| Promise<Command[]>` | Further commands for a typed query, merged with `commands` (same `id` keeps the one in `commands`); an answer for a query no longer typed is dropped |
 | `sourceDelay` | `number` | Milliseconds of typing pause before `source` is asked (default 200) |
@@ -86,6 +87,7 @@ Custom element: `<keybinds-cheatsheet>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `commands` | `Command[]` | Commands to display |
+| `inputs` | `Input[]` | Which bindings are shown (default: keys only) |
 | `context` | `object` | Context for `when` evaluation |
 | `open` | `boolean` | Visibility state |
 
@@ -131,6 +133,7 @@ Custom element: `<keybinds-settings>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `store` | `BindingsStore` | Reactive bindings store instance |
+| `inputs` | `Input[]` | Which bindings are shown and can be recorded (default: keys only) |
 | `open` | `boolean` | Visibility state |
 
 ### Attributes
@@ -171,10 +174,7 @@ Custom element: `<keybinds-settings>`
 | `binding-remove` | Remove (×) button |
 | `binding-release` | Press/release switch on a binding (`binding-release-on` while it is a release) |
 | `item-add` | Add binding container |
-| `add-key` | Add Key button |
-| `add-mouse` | Add Mouse button |
-| `add-gamepad` | Add Gamepad button (shown while a gamepad is connected) |
-| `add-axis` | Add a source to an axis |
+| `add-<input>` | Add button for each of `inputs`: `add-key`, `add-mouse`, `add-gamepad` (shown while a gamepad is connected), `add-axis` |
 | `binding-invert` | An axis source's Invert switch (`binding-invert-on` when inverted) |
 | `recording-overlay` | Recording prompt text |
 | `recording-release` | Release toggle in the recording prompt (`recording-release-on` while on) |
@@ -199,6 +199,7 @@ Custom element: `<keybinds-basic-context-menu>`
 | Property | Type | Description |
 |----------|------|-------------|
 | `commands` | `Command[]` | Commands to display and execute |
+| `inputs` | `Input[]` | How bindings are shown: an item shows its first (default: keys only) |
 | `context` | `object` | Context for `when` evaluation |
 | `menu` | `string` | Filter to commands with matching `menu` tag |
 | `position` | `{ x: number, y: number }` | Menu position in viewport coordinates |
@@ -274,7 +275,7 @@ Maps button numbers to canonical names (0=click, 1=middle, 2=right).
 
 ---
 
-## findConflict(schema, bindingStr, type, excludeId?)
+## findConflict(schema, bindingStr, input, excludeId?)
 
 Check if a binding string conflicts with any command in a schema.
 
@@ -282,7 +283,7 @@ Check if a binding string conflicts with any command in a schema.
 function findConflict(
   schema: Schema,
   bindingStr: string,
-  type: 'keys' | 'mouse',
+  input: Input,
   excludeId?: string
 ): { commandId: string, label: string } | null
 ```

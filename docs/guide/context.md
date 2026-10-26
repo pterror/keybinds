@@ -11,7 +11,7 @@ keybinds(commands, () => ({
   hasSelection: selectedItems.length > 0,
   isEditing: editMode === true,
   canUndo: history.length > 0,
-}))
+}), { inputs: [keys()] })
 ```
 
 The function is called on every event, so it always reflects current state.

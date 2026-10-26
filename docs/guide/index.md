@@ -22,7 +22,7 @@ npm link keybinds
 <keybinds-basic-context-menu auto-trigger target="#editor" menu="editor"></keybinds-basic-context-menu>
 
 <script type="module">
-  import { keybinds, registerComponents } from 'keybinds'
+  import { keybinds, keys, registerComponents } from 'keybinds'
   import 'keybinds/styles/palette.css'
 
   const commands = [
@@ -44,7 +44,7 @@ npm link keybinds
   ]
 
   // Register keybinds
-  keybinds(commands)
+  keybinds(commands, undefined, { inputs: [keys()] })
 
   // Register and connect UI components
   registerComponents()
@@ -72,7 +72,7 @@ Add context for conditional commands:
 ```js
 keybinds(commands, () => ({
   hasSelection: selection.length > 0
-}))
+}), { inputs: [keys()] })
 ```
 
 ```js

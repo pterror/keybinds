@@ -17,7 +17,7 @@ npm link keybinds
 ## Usage
 
 ```js
-import { keybinds, registerComponents } from 'keybinds'
+import { keybinds, keys, registerComponents } from 'keybinds'
 import 'keybinds/styles/palette.css'
 
 const commands = [
@@ -30,7 +30,7 @@ const commands = [
   }
 ]
 
-keybinds(commands)
+keybinds(commands, undefined, { inputs: [keys()] })
 
 // Optional: UI components (palette, cheatsheet, context menu, settings)
 registerComponents()
